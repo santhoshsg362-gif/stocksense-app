@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
+import '../analysis/analysis_screen.dart';
 
 class WatchlistScreen extends StatefulWidget {
   const WatchlistScreen({super.key});
@@ -42,6 +43,11 @@ class _WatchlistScreenState
         _isLoading = false;
       });
     } catch (e) {
+      if (e.toString().contains('TOKEN_EXPIRED')) {
+        if (!mounted) return;
+        await context.read<AuthProvider>().logout();
+        return;
+      }
       setState(() {
         _error = 'Could not load watchlist';
         _isLoading = false;
@@ -49,7 +55,6 @@ class _WatchlistScreenState
     }
   }
 
-  // ── Price difference calculation ─────────────────
   double _getPriceDiff(
       double addedPrice, double currentPrice) {
     if (addedPrice == 0) return 0;
@@ -86,7 +91,8 @@ class _WatchlistScreenState
             : RefreshIndicator(
                 onRefresh: _loadWatchlist,
                 child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  padding:
+                    const EdgeInsets.all(16),
                   itemCount: _watchlist.length,
                   itemBuilder: (_, i) =>
                     _buildWatchlistCard(
@@ -101,203 +107,282 @@ class _WatchlistScreenState
       Map<String, dynamic> item) {
 
     final addedPrice = double.tryParse(
-      item['addedPrice']?.toString() ?? '0') ?? 0;
-
-    // Get current price from our stock database
-    // In real app this would be live price
+      item['addedPrice']?.toString() ?? '0')
+      ?? 0;
     final currentPrice = addedPrice;
     final priceDiff = _getPriceDiff(
       addedPrice, currentPrice);
     final isPositive = priceDiff >= 0;
-
     final targetPrice = item['targetPrice'] != null
       ? double.tryParse(
           item['targetPrice'].toString())
       : null;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AnalysisScreen(
+            symbol: item['symbol'] ?? '',
+            companyName:
+              item['companyName'] ?? '',
+          ),
+        ),
+      ),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
 
-            // ── Header row ──────────────────────
-            Row(
-              mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppTheme.accentBlue
-                          .withOpacity(0.1),
-                        borderRadius:
-                          BorderRadius.circular(10),
-                      ),
-                      child: Center(
-                        child: Text(
-                          (item['symbol'] ?? 'X')
-                            .substring(0, 1),
-                          style: const TextStyle(
-                            color: AppTheme.accentBlue,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+              // ── Header row ──────────────────
+              Row(
+                mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue
+                            .withOpacity(0.1),
+                          borderRadius:
+                            BorderRadius.circular(
+                              10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            (item['symbol'] ?? 'X')
+                              .substring(0, 1),
+                            style: const TextStyle(
+                              color:
+                                AppTheme.accentBlue,
+                              fontWeight:
+                                FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item['symbol'] ?? '',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['symbol'] ?? '',
+                            style: const TextStyle(
+                              fontWeight:
+                                FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
-                        ),
-                        Text(
-                          item['companyName'] ?? '',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
+                          Text(
+                            item['companyName']
+                              ?? '',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow:
+                              TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow:
-                            TextOverflow.ellipsis,
-                        ),
-                      ],
+                        ],
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: AppTheme.red,
+                      size: 20,
                     ),
-                  ],
-                ),
-                // Remove button
-                IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    color: AppTheme.red,
-                    size: 20,
+                    onPressed: () =>
+                      _removeFromWatchlist(
+                        item['id']),
                   ),
-                  onPressed: () =>
-                    _removeFromWatchlist(item['id']),
-                ),
-              ],
-            ),
+                ],
+              ),
 
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-
-            // ── Price comparison row ─────────────
-            Row(
-              children: [
-                Expanded(
-                  child: _priceBox(
-                    'Added Price',
-                    'Rs. ${addedPrice.toStringAsFixed(2)}',
-                    Colors.grey[700]!,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _priceBox(
-                    'Current Price',
-                    'Rs. ${currentPrice.toStringAsFixed(2)}',
-                    AppTheme.primaryBlue,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _priceBox(
-                    'Change',
-                    '${isPositive ? '+' : ''}${priceDiff.toStringAsFixed(2)}%',
-                    isPositive
-                      ? AppTheme.green
-                      : AppTheme.red,
-                  ),
-                ),
-              ],
-            ),
-
-            // ── Target price row ─────────────────
-            if (targetPrice != null) ...[
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppTheme.gold.withOpacity(0.1),
-                  borderRadius:
-                    BorderRadius.circular(8),
-                  border: Border.all(
-                    color:
-                      AppTheme.gold.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.flag,
-                      size: 14,
-                      color: AppTheme.gold,
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+
+              // ── Price comparison ─────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: _priceBox(
+                      'Added Price',
+                      'Rs. ${addedPrice.toStringAsFixed(2)}',
+                      Colors.grey[700]!,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Target: Rs. ${targetPrice.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _priceBox(
+                      'Current Price',
+                      'Rs. ${currentPrice.toStringAsFixed(2)}',
+                      AppTheme.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _priceBox(
+                      'Change',
+                      '${isPositive ? '+' : ''}${priceDiff.toStringAsFixed(2)}%',
+                      isPositive
+                        ? AppTheme.green
+                        : AppTheme.red,
+                    ),
+                  ),
+                ],
+              ),
+
+              // ── Target price ─────────────────
+              if (targetPrice != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                    const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.gold
+                      .withOpacity(0.1),
+                    borderRadius:
+                      BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.gold
+                        .withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.flag,
+                        size: 14,
                         color: AppTheme.gold,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                    const Spacer(),
-                    // Show how far from target
-                    Text(
-                      '${((targetPrice - currentPrice) / currentPrice * 100).toStringAsFixed(1)}% away',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 11,
+                      const SizedBox(width: 6),
+                      Text(
+                        'Target: Rs. ${targetPrice.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: AppTheme.gold,
+                          fontSize: 13,
+                          fontWeight:
+                            FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                      const Spacer(),
+                      Text(
+                        '${((targetPrice - currentPrice) / currentPrice * 100).toStringAsFixed(1)}% away',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ],
+
+              const SizedBox(height: 12),
+
+              // ── Action buttons ───────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                        _showSetTargetSheet(
+                          context, item),
+                      icon: const Icon(
+                        Icons.flag_outlined,
+                        size: 14),
+                      label: Text(
+                        targetPrice != null
+                          ? 'Edit Target'
+                          : 'Set Target',
+                      ),
+                      style:
+                        OutlinedButton.styleFrom(
+                        padding:
+                          const EdgeInsets
+                            .symmetric(
+                            vertical: 8),
+                        textStyle:
+                          const TextStyle(
+                            fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                              AnalysisScreen(
+                                symbol:
+                                  item['symbol']
+                                    ?? '',
+                                companyName:
+                                  item[
+                                    'companyName']
+                                    ?? '',
+                              ),
+                          ),
+                        ),
+                      icon: const Icon(
+                        Icons.analytics_outlined,
+                        size: 14,
+                      ),
+                      label: const Text(
+                        'Analyse'),
+                      style:
+                        OutlinedButton.styleFrom(
+                        padding:
+                          const EdgeInsets
+                            .symmetric(
+                            vertical: 8),
+                        textStyle:
+                          const TextStyle(
+                            fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Tap hint
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment:
+                  MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.touch_app,
+                    size: 11,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Tap card to analyse',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                ],
               ),
             ],
-
-            const SizedBox(height: 12),
-
-            // ── Action buttons ───────────────────
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                      _showSetTargetSheet(
-                        context, item),
-                    icon: const Icon(
-                      Icons.flag_outlined,
-                      size: 14),
-                    label: Text(
-                      targetPrice != null
-                        ? 'Edit Target'
-                        : 'Set Target',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding:
-                        const EdgeInsets.symmetric(
-                          vertical: 8),
-                      textStyle: const TextStyle(
-                        fontSize: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -312,7 +397,8 @@ class _WatchlistScreenState
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+          CrossAxisAlignment.start,
         children: [
           Text(
             label,
@@ -372,16 +458,14 @@ class _WatchlistScreenState
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Search field
                 TextField(
                   controller: searchCtrl,
                   autofocus: true,
                   decoration: InputDecoration(
                     hintText:
                       'Search by name or symbol...',
-                    prefixIcon: const Icon(
-                      Icons.search),
+                    prefixIcon:
+                      const Icon(Icons.search),
                     suffixIcon: isSearching
                       ? const Padding(
                           padding:
@@ -418,35 +502,36 @@ class _WatchlistScreenState
                     }
                   },
                 ),
-
                 const SizedBox(height: 16),
-
-                // Search results
                 Expanded(
                   child: searchResults.isEmpty
                     ? Center(
                         child: Text(
-                          searchCtrl.text.length < 2
-                            ? 'Type at least 2 characters to search'
+                          searchCtrl.text.length
+                              < 2
+                            ? 'Type at least 2 '
+                              'characters to search'
                             : 'No stocks found',
                           style: TextStyle(
                             color: Colors.grey[600]),
-                          textAlign: TextAlign.center,
+                          textAlign:
+                            TextAlign.center,
                         ),
                       )
                     : ListView.separated(
                         itemCount:
                           searchResults.length,
-                        separatorBuilder: (_, __) =>
-                          const Divider(height: 1),
+                        separatorBuilder:
+                          (_, __) =>
+                            const Divider(height: 1),
                         itemBuilder: (_, i) {
                           final stock =
                             searchResults[i];
                           final change =
                             double.tryParse(
                               stock['percentChange']
-                                ?.toString() ?? '0'
-                            ) ?? 0;
+                                ?.toString()
+                                ?? '0') ?? 0;
                           final isPos = change >= 0;
 
                           return ListTile(
@@ -455,11 +540,13 @@ class _WatchlistScreenState
                                 AppTheme.primaryBlue
                                   .withOpacity(0.1),
                               child: Text(
-                                (stock['symbol'] ??
-                                  'X').substring(0,1),
-                                style: const TextStyle(
-                                  color:
-                                    AppTheme.primaryBlue,
+                                (stock['symbol']
+                                  ?? 'X')
+                                  .substring(0, 1),
+                                style:
+                                  const TextStyle(
+                                  color: AppTheme
+                                    .primaryBlue,
                                   fontWeight:
                                     FontWeight.bold,
                                 ),
@@ -467,7 +554,8 @@ class _WatchlistScreenState
                             ),
                             title: Text(
                               stock['symbol'] ?? '',
-                              style: const TextStyle(
+                              style:
+                                const TextStyle(
                                 fontWeight:
                                   FontWeight.bold,
                               ),
@@ -477,21 +565,24 @@ class _WatchlistScreenState
                                 ?? '',
                               maxLines: 1,
                               overflow:
-                                TextOverflow.ellipsis,
+                                TextOverflow
+                                  .ellipsis,
                             ),
                             trailing: Column(
                               mainAxisAlignment:
                                 MainAxisAlignment
                                   .center,
                               crossAxisAlignment:
-                                CrossAxisAlignment.end,
+                                CrossAxisAlignment
+                                  .end,
                               children: [
                                 Text(
                                   'Rs. ${stock['currentPrice']}',
                                   style:
                                     const TextStyle(
                                     fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                        .bold,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -499,11 +590,11 @@ class _WatchlistScreenState
                                   '${isPos ? '+' : ''}${change.toStringAsFixed(2)}%',
                                   style: TextStyle(
                                     color: isPos
-                                      ? AppTheme.green
-                                      : AppTheme.red,
+                                      ? AppTheme
+                                          .green
+                                      : AppTheme
+                                          .red,
                                     fontSize: 11,
-                                    fontWeight:
-                                      FontWeight.w600,
                                   ),
                                 ),
                               ],
@@ -533,7 +624,8 @@ class _WatchlistScreenState
         'companyName': stock['companyName'],
         'exchange': stock['exchange'] ?? 'NSE',
         'addedPrice': double.parse(
-          stock['currentPrice']?.toString() ?? '0'),
+          stock['currentPrice']
+            ?.toString() ?? '0'),
       });
       if (!mounted) return;
       Navigator.pop(sheetCtx);
@@ -560,7 +652,8 @@ class _WatchlistScreenState
       BuildContext context,
       Map<String, dynamic> item) {
     final targetCtrl = TextEditingController(
-      text: item['targetPrice']?.toString() ?? '');
+      text: item['targetPrice']
+        ?.toString() ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -608,9 +701,9 @@ class _WatchlistScreenState
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                if (targetCtrl.text.isEmpty) return;
+                if (targetCtrl.text.isEmpty)
+                  return;
                 try {
-                  // Remove and re-add with target
                   await _api.removeFromWatchlist(
                     item['id']);
                   await _api.addToWatchlist({
@@ -641,15 +734,43 @@ class _WatchlistScreenState
     );
   }
 
-  Future<void> _removeFromWatchlist(int id) async {
-    await _api.removeFromWatchlist(id);
-    _loadWatchlist();
+  Future<void> _removeFromWatchlist(
+      int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Stock'),
+        content: const Text(
+          'Remove from watchlist?'),
+        actions: [
+          TextButton(
+            onPressed: () =>
+              Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () =>
+              Navigator.pop(ctx, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(
+                color: AppTheme.red),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _api.removeFromWatchlist(id);
+      _loadWatchlist();
+    }
   }
 
   Widget _buildEmpty() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment:
+          MainAxisAlignment.center,
         children: [
           Icon(
             Icons.bookmark_outline,
@@ -678,7 +799,8 @@ class _WatchlistScreenState
   Widget _buildError() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment:
+          MainAxisAlignment.center,
         children: [
           const Icon(
             Icons.error_outline,

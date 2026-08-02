@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/constants.dart';
+import '../screens/auth/login_screen.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FlutterSecureStorage _storage =
@@ -66,7 +67,7 @@ class AuthProvider extends ChangeNotifier {
   Navigator.pushAndRemoveUntil(
     context,
     MaterialPageRoute(
-      builder: (_) => const LoginScreen()),
+      builder: (_) => LoginScreen()),
     (route) => false,
   );
 }

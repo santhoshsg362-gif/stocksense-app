@@ -1,9 +1,9 @@
+import '../analysis/analysis_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
-import '../analysis/analysis_screen.dart';
 import '../auth/login_screen.dart';
 
 class PortfolioScreen extends StatefulWidget {
