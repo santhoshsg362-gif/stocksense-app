@@ -88,13 +88,17 @@ class ApiService {
   // ── PORTFOLIO ──────────────────────────────────────────────
 
   Future<List<dynamic>> getHoldings() async {
-    final response = await http.get(
-      Uri.parse(
-        '${AppConstants.baseUrl}/portfolio/holdings'),
-      headers: _headers,
-    );
-    return jsonDecode(response.body);
+  final response = await http.get(
+    Uri.parse(
+      '${AppConstants.baseUrl}/portfolio/holdings'),
+    headers: _headers,
+  );
+  if (response.statusCode == 403) {
+    throw Exception('TOKEN_EXPIRED');
   }
+  return jsonDecode(response.body);
+}
+
 
   Future<Map<String, dynamic>> addHolding(
       Map<String, dynamic> data) async {
@@ -129,12 +133,15 @@ class ApiService {
   // ── WATCHLIST ──────────────────────────────────────────────
 
   Future<List<dynamic>> getWatchlist() async {
-    final response = await http.get(
-      Uri.parse('${AppConstants.baseUrl}/watchlist'),
-      headers: _headers,
-    );
-    return jsonDecode(response.body);
+  final response = await http.get(
+    Uri.parse('${AppConstants.baseUrl}/watchlist'),
+    headers: _headers,
+  );
+  if (response.statusCode == 403) {
+    throw Exception('TOKEN_EXPIRED');
   }
+  return jsonDecode(response.body);
+}
 
   Future<Map<String, dynamic>> addToWatchlist(
       Map<String, dynamic> data) async {

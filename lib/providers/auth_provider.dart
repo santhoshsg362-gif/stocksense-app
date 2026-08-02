@@ -21,6 +21,7 @@ class AuthProvider extends ChangeNotifier {
     _loadToken();
   }
 
+
   Future<void> _loadToken() async {
     _token = await _storage.read(
       key: AppConstants.tokenKey);
@@ -57,4 +58,16 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = value;
     notifyListeners();
   }
+
+  Future<void> handleUnauthorized(
+    BuildContext context) async {
+  await logout();
+  if (!context.mounted) return;
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const LoginScreen()),
+    (route) => false,
+  );
+}
 }

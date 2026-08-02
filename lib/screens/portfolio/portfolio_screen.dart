@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
+import '../analysis/analysis_screen.dart';
+import '../auth/login_screen.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -27,6 +29,7 @@ class _PortfolioScreenState
 
   ApiService get _api {
     final token = context.read<AuthProvider>().token;
+    print('TOKEN: $token');
     return ApiService(token: token);
   }
 
@@ -42,10 +45,22 @@ class _PortfolioScreenState
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _error = 'Could not load portfolio';
-        _isLoading = false;
-      });
+  if (e.toString().contains('TOKEN_EXPIRED')) {
+    if (!mounted) return;
+    await context.read<AuthProvider>().logout();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+    return;
+  }
+  setState(() {
+    _error = 'Could not load portfolio';
+    _isLoading = false;
+  });
     }
   }
 
@@ -70,7 +85,8 @@ class _PortfolioScreenState
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddHoldingSheet(context),
+        onPressed: () =>
+          _showAddHoldingSheet(context),
         backgroundColor: AppTheme.primaryBlue,
         child: const Icon(
           Icons.add, color: Colors.white),
@@ -118,7 +134,8 @@ class _PortfolioScreenState
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+          CrossAxisAlignment.start,
         children: [
           const Text(
             'Total Investment',
@@ -150,7 +167,8 @@ class _PortfolioScreenState
     );
   }
 
-  Widget _summaryChip(IconData icon, String label) {
+  Widget _summaryChip(
+      IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 12, vertical: 6),
@@ -161,7 +179,8 @@ class _PortfolioScreenState
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 14),
+          Icon(icon,
+            color: Colors.white, size: 14),
           const SizedBox(width: 4),
           Text(
             label,
@@ -180,165 +199,213 @@ class _PortfolioScreenState
   Widget _buildHoldingCard(
       Map<String, dynamic> holding) {
     final buyPrice = double.tryParse(
-      holding['buyPrice']?.toString() ?? '0') ?? 0;
+      holding['buyPrice']?.toString() ?? '0')
+      ?? 0;
     final quantity = double.tryParse(
-      holding['quantity']?.toString() ?? '0') ?? 0;
+      holding['quantity']?.toString() ?? '0')
+      ?? 0;
     final totalInvestment = buyPrice * quantity;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryBlue
-                          .withOpacity(0.1),
-                        borderRadius:
-                          BorderRadius.circular(10),
-                      ),
-                      child: Center(
-                        child: Text(
-                          (holding['symbol'] ?? 'X')
-                            .substring(0, 1),
-                          style: const TextStyle(
-                            color: AppTheme.primaryBlue,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AnalysisScreen(
+            symbol: holding['symbol'] ?? '',
+            companyName:
+              holding['companyName'] ?? '',
+          ),
+        ),
+      ),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryBlue
+                            .withOpacity(0.1),
+                          borderRadius:
+                            BorderRadius.circular(
+                              10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            (holding['symbol'] ?? 'X')
+                              .substring(0, 1),
+                            style: const TextStyle(
+                              color:
+                                AppTheme.primaryBlue,
+                              fontWeight:
+                                FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          holding['symbol'] ?? '',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            holding['symbol'] ?? '',
+                            style: const TextStyle(
+                              fontWeight:
+                                FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
-                        ),
-                        Text(
-                          holding['companyName'] ?? '',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
+                          Text(
+                            holding['companyName']
+                              ?? '',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow:
+                              TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        ],
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment:
+                      CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Rs. ${buyPrice.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment:
-                    CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'Rs. ${buyPrice.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
                       ),
-                    ),
-                    Text(
-                      'Buy Price',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 11,
+                      Text(
+                        'Buy Price',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 11,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
-              children: [
-                _holdingDetail(
-                  'Quantity',
-                  '${quantity.toStringAsFixed(0)} shares',
-                ),
-                _holdingDetail(
-                  'Exchange',
-                  holding['exchange'] ?? 'NSE',
-                ),
-                _holdingDetail(
-                  'Invested',
-                  'Rs. ${totalInvestment.toStringAsFixed(0)}',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                      _showEditSheet(
-                        context, holding),
-                    icon: const Icon(
-                      Icons.edit, size: 16),
-                    label: const Text('Edit'),
-                    style: OutlinedButton.styleFrom(
-                      padding:
-                        const EdgeInsets.symmetric(
-                          vertical: 8),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
+                children: [
+                  _holdingDetail(
+                    'Quantity',
+                    '${quantity.toStringAsFixed(0)} shares',
+                  ),
+                  _holdingDetail(
+                    'Exchange',
+                    holding['exchange'] ?? 'NSE',
+                  ),
+                  _holdingDetail(
+                    'Invested',
+                    'Rs. ${totalInvestment.toStringAsFixed(0)}',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Tap to analyse hint
+              Row(
+                mainAxisAlignment:
+                  MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.touch_app,
+                    size: 12,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Tap to analyse',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[400],
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                      _deleteHolding(holding['id']),
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 16,
-                      color: AppTheme.red,
-                    ),
-                    label: const Text(
-                      'Delete',
-                      style: TextStyle(
-                        color: AppTheme.red),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding:
-                        const EdgeInsets.symmetric(
-                          vertical: 8),
-                      side: const BorderSide(
-                        color: AppTheme.red),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                        _showEditSheet(
+                          context, holding),
+                      icon: const Icon(
+                        Icons.edit, size: 16),
+                      label: const Text('Edit'),
+                      style:
+                        OutlinedButton.styleFrom(
+                        padding:
+                          const EdgeInsets.symmetric(
+                            vertical: 8),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                        _deleteHolding(
+                          holding['id']),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 16,
+                        color: AppTheme.red,
+                      ),
+                      label: const Text(
+                        'Delete',
+                        style: TextStyle(
+                          color: AppTheme.red),
+                      ),
+                      style:
+                        OutlinedButton.styleFrom(
+                        padding:
+                          const EdgeInsets.symmetric(
+                            vertical: 8),
+                        side: const BorderSide(
+                          color: AppTheme.red),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _holdingDetail(String label, String value) {
+  Widget _holdingDetail(
+      String label, String value) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+        CrossAxisAlignment.start,
       children: [
         Text(
           label,
@@ -360,70 +427,291 @@ class _PortfolioScreenState
 
   // ── Add Holding Sheet ────────────────────────────
   void _showAddHoldingSheet(BuildContext context) {
-    final symbolCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    final priceCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController();
-    String exchange = 'NSE';
+  final searchCtrl = TextEditingController();
+  final priceCtrl = TextEditingController();
+  final qtyCtrl = TextEditingController();
+  List<dynamic> searchResults = [];
+  bool isSearching = false;
+  Map<String, dynamic>? selectedStock;
+  String exchange = 'NSE';
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(20)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) =>
-          Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom: MediaQuery.of(ctx)
-                .viewInsets.bottom + 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment:
-                CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Add Stock',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(20)),
+    ),
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSheetState) => SizedBox(
+        height:
+          MediaQuery.of(ctx).size.height * 0.85,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(ctx)
+              .viewInsets.bottom + 20,
+          ),
+          child: Column(
+            crossAxisAlignment:
+              CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Add to Portfolio',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // If no stock selected show search
+              if (selectedStock == null) ...[
+                TextField(
+                  controller: searchCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText:
+                      'Search stock by name or symbol...',
+                    prefixIcon: const Icon(
+                      Icons.search),
+                    suffixIcon: isSearching
+                      ? const Padding(
+                          padding:
+                            EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child:
+                              CircularProgressIndicator(
+                                strokeWidth: 2),
+                          ),
+                        )
+                      : null,
+                  ),
+                  onChanged: (value) async {
+                    if (value.length < 2) {
+                      setSheetState(() =>
+                        searchResults = []);
+                      return;
+                    }
+                    setSheetState(() =>
+                      isSearching = true);
+                    try {
+                      final results =
+                        await _api.searchStocks(
+                          value);
+                      setSheetState(() {
+                        searchResults = results;
+                        isSearching = false;
+                      });
+                    } catch (e) {
+                      setSheetState(() =>
+                        isSearching = false);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: searchResults.isEmpty
+                    ? Center(
+                        child: Text(
+                          searchCtrl.text.length < 2
+                            ? 'Type to search stocks'
+                            : 'No stocks found',
+                          style: TextStyle(
+                            color: Colors.grey[600]),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount:
+                          searchResults.length,
+                        separatorBuilder:
+                          (_, __) =>
+                            const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final stock =
+                            searchResults[i];
+                          final change =
+                            double.tryParse(
+                              stock['percentChange']
+                                ?.toString() ?? '0'
+                            ) ?? 0;
+                          final isPos = change >= 0;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor:
+                                AppTheme.primaryBlue
+                                  .withOpacity(0.1),
+                              child: Text(
+                                (stock['symbol']
+                                  ?? 'X')
+                                  .substring(0, 1),
+                                style:
+                                  const TextStyle(
+                                  color: AppTheme
+                                    .primaryBlue,
+                                  fontWeight:
+                                    FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              stock['symbol'] ?? '',
+                              style:
+                                const TextStyle(
+                                fontWeight:
+                                  FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              stock['companyName']
+                                ?? '',
+                              maxLines: 1,
+                              overflow:
+                                TextOverflow
+                                  .ellipsis,
+                            ),
+                            trailing: Column(
+                              mainAxisAlignment:
+                                MainAxisAlignment
+                                  .center,
+                              crossAxisAlignment:
+                                CrossAxisAlignment
+                                  .end,
+                              children: [
+                                Text(
+                                  'Rs. ${stock['currentPrice']}',
+                                  style:
+                                    const TextStyle(
+                                    fontWeight:
+                                      FontWeight
+                                        .bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Text(
+                                  '${isPos ? '+' : ''}${change.toStringAsFixed(2)}%',
+                                  style: TextStyle(
+                                    color: isPos
+                                      ? AppTheme
+                                          .green
+                                      : AppTheme
+                                          .red,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            onTap: () {
+                              setSheetState(() {
+                                selectedStock =
+                                  stock;
+                                priceCtrl.text =
+                                  stock[
+                                    'currentPrice']
+                                    ?.toString()
+                                    ?? '';
+                                exchange =
+                                  stock['exchange']
+                                    ?? 'NSE';
+                              });
+                            },
+                          );
+                        },
+                      ),
+                ),
+              ],
+
+              // After stock selected show details
+              if (selectedStock != null) ...[
+                // Selected stock header
+                Container(
+                  padding:
+                    const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue
+                      .withOpacity(0.1),
+                    borderRadius:
+                      BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor:
+                          AppTheme.primaryBlue,
+                        child: Text(
+                          (selectedStock![
+                            'symbol'] ?? 'X')
+                            .substring(0, 1),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight:
+                              FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                            CrossAxisAlignment
+                              .start,
+                          children: [
+                            Text(
+                              selectedStock![
+                                'symbol'] ?? '',
+                              style:
+                                const TextStyle(
+                                fontWeight:
+                                  FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              selectedStock![
+                                'companyName']
+                                ?? '',
+                              style: TextStyle(
+                                color:
+                                  Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                          setSheetState(() =>
+                            selectedStock = null),
+                        child: const Text(
+                          'Change'),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: symbolCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Symbol (e.g. RELIANCE)',
-                  ),
-                  textCapitalization:
-                    TextCapitalization.characters,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Company Name',
-                  ),
-                ),
-                const SizedBox(height: 12),
+
+                // Buy price
                 TextField(
                   controller: priceCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Buy Price',
                     prefixText: 'Rs. ',
+                    helperText:
+                      'Current market price '
+                      'pre-filled',
                   ),
                   keyboardType:
                     TextInputType.number,
                 ),
                 const SizedBox(height: 12),
+
+                // Quantity
                 TextField(
                   controller: qtyCtrl,
+                  autofocus: true,
                   decoration: const InputDecoration(
                     labelText: 'Quantity (shares)',
                   ),
@@ -431,6 +719,8 @@ class _PortfolioScreenState
                     TextInputType.number,
                 ),
                 const SizedBox(height: 12),
+
+                // Exchange
                 DropdownButtonFormField<String>(
                   value: exchange,
                   decoration: const InputDecoration(
@@ -442,24 +732,26 @@ class _PortfolioScreenState
                       child: Text(e),
                     )
                   ).toList(),
-                  onChanged: (v) => setSheetState(
-                    () => exchange = v!),
+                  onChanged: (v) =>
+                    setSheetState(
+                      () => exchange = v!),
                 ),
                 const SizedBox(height: 20),
+
+                // Add button
                 ElevatedButton(
                   onPressed: () async {
-                    if (symbolCtrl.text.isEmpty ||
-                        priceCtrl.text.isEmpty ||
-                        qtyCtrl.text.isEmpty) {
+                    if (qtyCtrl.text.isEmpty ||
+                        priceCtrl.text.isEmpty) {
                       return;
                     }
                     try {
                       await _api.addHolding({
                         'symbol':
-                          symbolCtrl.text
-                            .toUpperCase(),
+                          selectedStock!['symbol'],
                         'companyName':
-                          nameCtrl.text,
+                          selectedStock![
+                            'companyName'],
                         'buyPrice': double.parse(
                           priceCtrl.text),
                         'quantity': double.parse(
@@ -469,32 +761,49 @@ class _PortfolioScreenState
                       if (!context.mounted) return;
                       Navigator.pop(ctx);
                       _loadHoldings();
+                      ScaffoldMessenger.of(context)
+                        .showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${selectedStock!['symbol']} added to portfolio'),
+                          backgroundColor:
+                            AppTheme.green,
+                        ),
+                      );
                     } catch (e) {
                       ScaffoldMessenger.of(context)
                         .showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Failed to add stock')),
+                            'Failed to add stock'),
+                          backgroundColor:
+                            AppTheme.red,
+                        ),
                       );
                     }
                   },
-                  child: const Text('Add to Portfolio'),
+                  child: const Text(
+                    'Add to Portfolio'),
                 ),
               ],
-            ),
+            ],
           ),
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ── Edit Sheet ───────────────────────────────────
   void _showEditSheet(
       BuildContext context,
       Map<String, dynamic> holding) {
     final priceCtrl = TextEditingController(
-      text: holding['buyPrice']?.toString() ?? '');
+      text: holding['buyPrice']
+        ?.toString() ?? '');
     final qtyCtrl = TextEditingController(
-      text: holding['quantity']?.toString() ?? '');
+      text: holding['quantity']
+        ?.toString() ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -547,7 +856,8 @@ class _PortfolioScreenState
                   await _api.updateHolding(
                     holding['id'],
                     {
-                      'symbol': holding['symbol'],
+                      'symbol':
+                        holding['symbol'],
                       'companyName':
                         holding['companyName'],
                       'buyPrice': double.parse(
@@ -585,7 +895,7 @@ class _PortfolioScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Stock'),
         content: const Text(
-          'Remove this stock from your portfolio?'),
+          'Remove this stock from portfolio?'),
         actions: [
           TextButton(
             onPressed: () =>
@@ -597,13 +907,13 @@ class _PortfolioScreenState
               Navigator.pop(ctx, true),
             child: const Text(
               'Delete',
-              style: TextStyle(color: AppTheme.red),
+              style: TextStyle(
+                color: AppTheme.red),
             ),
           ),
         ],
       ),
     );
-
     if (confirm == true) {
       await _api.deleteHolding(id);
       _loadHoldings();
@@ -614,7 +924,8 @@ class _PortfolioScreenState
   Widget _buildEmpty() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment:
+          MainAxisAlignment.center,
         children: [
           Icon(
             Icons.pie_chart_outline,
@@ -643,7 +954,8 @@ class _PortfolioScreenState
   Widget _buildError() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment:
+          MainAxisAlignment.center,
         children: [
           const Icon(
             Icons.error_outline,
