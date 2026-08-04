@@ -235,12 +235,17 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  Future<List<dynamic>> searchStocks(String query) async {
+  Future<List<dynamic>> searchStocks(
+    String query) async {
   final response = await http.get(
     Uri.parse(
-      '${AppConstants.baseUrl}/stocks/search?query=$query'),
+      '${AppConstants.baseUrl}/stocks/search'
+      '?query=$query'),
     headers: _headers,
   );
+  if (response.statusCode == 403) {
+    throw Exception('TOKEN_EXPIRED');
+  }
   return jsonDecode(response.body);
 }
 

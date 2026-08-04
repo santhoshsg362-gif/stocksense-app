@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
 import '../fno/fno_screen.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
+import '../analysis/analysis_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -53,6 +56,385 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
+  ApiService get _apiWithToken {
+  final token = context.read<AuthProvider>().token;
+  return ApiService(token: token);
+}
+
+void _showSearchSheet(BuildContext context) {
+  final searchCtrl = TextEditingController();
+  List<dynamic> searchResults = [];
+  bool isSearching = false;
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(20)),
+    ),
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSheetState) => SizedBox(
+        height:
+          MediaQuery.of(ctx).size.height * 0.9,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(ctx)
+              .viewInsets.bottom + 20,
+          ),
+          child: Column(
+            crossAxisAlignment:
+              CrossAxisAlignment.start,
+            children: [
+
+              // Header
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Search Stocks',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () =>
+                      Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Search field
+              TextField(
+                controller: searchCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText:
+                    'Search by name or symbol...',
+                  prefixIcon:
+                    const Icon(Icons.search),
+                  suffixIcon: isSearching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                            CircularProgressIndicator(
+                              strokeWidth: 2),
+                        ),
+                      )
+                    : null,
+                ),
+                onChanged: (value) async {
+                  if (value.length < 2) {
+                    setSheetState(() =>
+                      searchResults = []);
+                    return;
+                  }
+                  setSheetState(() =>
+                    isSearching = true);
+                  try {
+                    final results =
+                      await _api.searchStocks(
+                        value);
+                    setSheetState(() {
+                      searchResults = results;
+                      isSearching = false;
+                    });
+                  } catch (e) {
+                    setSheetState(() =>
+                      isSearching = false);
+                  }
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Results
+              Expanded(
+                child: searchResults.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment:
+                          MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search,
+                            size: 64,
+                            color: Colors.grey[300],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            searchCtrl.text.length
+                                < 2
+                              ? 'Type to search\nstocks and indices'
+                              : 'No stocks found',
+                            textAlign:
+                              TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount:
+                        searchResults.length,
+                      separatorBuilder: (_, __) =>
+                        const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final stock =
+                          searchResults[i];
+                        final change =
+                          double.tryParse(
+                            stock['percentChange']
+                              ?.toString()
+                              ?? '0') ?? 0;
+                        final isPos = change >= 0;
+
+                        return ListTile(
+                          contentPadding:
+                            const EdgeInsets
+                              .symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                          leading: CircleAvatar(
+                            backgroundColor:
+                              AppTheme.primaryBlue
+                                .withOpacity(0.1),
+                            child: Text(
+                              (stock['symbol']
+                                ?? 'X')
+                                .substring(0, 1),
+                              style:
+                                const TextStyle(
+                                color: AppTheme
+                                  .primaryBlue,
+                                fontWeight:
+                                  FontWeight.bold,
+                              ),
+                            ),
+                          ),
+
+                          // Stock name and symbol
+                          title: Text(
+                            stock['symbol'] ?? '',
+                            style: const TextStyle(
+                              fontWeight:
+                                FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            stock['companyName']
+                              ?? '',
+                            maxLines: 1,
+                            overflow:
+                              TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                            ),
+                          ),
+
+                          // Price and change
+                          trailing: Row(
+                            mainAxisSize:
+                              MainAxisSize.min,
+                            children: [
+                              Column(
+                                mainAxisAlignment:
+                                  MainAxisAlignment
+                                    .center,
+                                crossAxisAlignment:
+                                  CrossAxisAlignment
+                                    .end,
+                                children: [
+                                  Text(
+                                    'Rs. ${stock['currentPrice']}',
+                                    style:
+                                      const TextStyle(
+                                      fontWeight:
+                                        FontWeight
+                                          .bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${isPos ? '+' : ''}${change.toStringAsFixed(2)}%',
+                                    style: TextStyle(
+                                      color: isPos
+                                        ? AppTheme
+                                            .green
+                                        : AppTheme
+                                            .red,
+                                      fontSize: 11,
+                                      fontWeight:
+                                        FontWeight
+                                          .w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(
+                                width: 8),
+
+                              // Add to watchlist button
+                              GestureDetector(
+                                onTap: () async {
+                                  await _addToWatchlist(
+                                    stock,
+                                    ctx,
+                                    setSheetState,
+                                    searchResults,
+                                    i,
+                                  );
+                                },
+                                child: Container(
+                                  padding:
+                                    const EdgeInsets
+                                      .all(6),
+                                  decoration:
+                                    BoxDecoration(
+                                    color: AppTheme
+                                      .primaryBlue
+                                      .withOpacity(
+                                        0.1),
+                                    borderRadius:
+                                      BorderRadius
+                                        .circular(8),
+                                    border:
+                                      Border.all(
+                                      color:
+                                        AppTheme
+                                          .primaryBlue
+                                          .withOpacity(
+                                            0.3),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons
+                                      .bookmark_add_outlined,
+                                    size: 18,
+                                    color: AppTheme
+                                      .primaryBlue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // Tap row to open analysis
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                  AnalysisScreen(
+                                    symbol: stock[
+                                      'symbol']
+                                      ?? '',
+                                    companyName:
+                                      stock[
+                                        'companyName']
+                                        ?? '',
+                                  ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+              ),
+
+              // Bottom hint
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment:
+                  MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.touch_app,
+                    size: 12,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Tap row to analyse  ·  ',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.bookmark_add_outlined,
+                    size: 12,
+                    color: AppTheme.primaryBlue,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'to add to watchlist',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _addToWatchlist(
+    Map<String, dynamic> stock,
+    BuildContext sheetCtx,
+    StateSetter setSheetState,
+    List<dynamic> results,
+    int index) async {
+  try {
+    await _apiWithToken.addToWatchlist({
+      'symbol': stock['symbol'],
+      'companyName': stock['companyName'],
+      'exchange': stock['exchange'] ?? 'NSE',
+      'addedPrice': double.parse(
+        stock['currentPrice']
+          ?.toString() ?? '0'),
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${stock['symbol']} added to watchlist'),
+        backgroundColor: AppTheme.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${stock['symbol']} already in watchlist'),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -78,8 +460,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
+            icon: const Icon(Icons.search),
+            onPressed: () => _showSearchSheet(context),
+            tooltip: 'Search stocks',
           ),
           IconButton(
             icon: const Icon(Icons.show_chart),
