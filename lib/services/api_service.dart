@@ -258,4 +258,25 @@ Future<Map<String, dynamic>> getStockInfo(
   );
   return jsonDecode(response.body);
 }
+
+Future<Map<String, dynamic>> getStockFundamentals(
+    String symbol) async {
+  final response = await http.get(
+    Uri.parse(
+      '${AppConstants.baseUrl}/stockdata/$symbol/fundamentals'),
+    headers: _headers,
+  );
+  return jsonDecode(response.body);
+}
+
+Future<Map<String, dynamic>> getStockTechnicals(
+    String symbol) async {
+  final response = await http.get(
+    Uri.parse(
+      '${AppConstants.baseUrl}/stockdata/$symbol/technicals'),
+    headers: _headers,
+  );
+  return jsonDecode(response.body);
+}
+
 }

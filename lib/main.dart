@@ -3,10 +3,15 @@ import 'package:provider/provider.dart';
 import 'config/app_theme.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/metrics_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/main_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final metricsProvider = MetricsProvider();
+  await metricsProvider.load();
+
   runApp(
     MultiProvider(
       providers: [
@@ -14,6 +19,8 @@ void main() {
           create: (_) => ThemeProvider()),
         ChangeNotifierProvider(
           create: (_) => AuthProvider()),
+        ChangeNotifierProvider(
+          create: (_) => metricsProvider),
       ],
       child: const StockSenseApp(),
     ),
@@ -25,8 +32,10 @@ class StockSenseApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = context.watch<ThemeProvider>();
-    final authProvider = context.watch<AuthProvider>();
+    final themeProvider =
+      context.watch<ThemeProvider>();
+    final authProvider =
+      context.watch<AuthProvider>();
 
     return MaterialApp(
       title: 'StockSense',
@@ -35,8 +44,8 @@ class StockSenseApp extends StatelessWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode,
       home: authProvider.isLoggedIn
-          ? const MainScreen()
-          : const LoginScreen(),
+        ? const MainScreen()
+        : const LoginScreen(),
     );
   }
 }
