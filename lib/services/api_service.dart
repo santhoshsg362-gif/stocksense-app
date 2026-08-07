@@ -164,14 +164,15 @@ class ApiService {
   // ── STOCK DATA ─────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getStockQuote(
-      String symbol) async {
-    final response = await http.get(
-      Uri.parse(
-        '${AppConstants.baseUrl}/stocks/$symbol/quote'),
-      headers: _headers,
-    );
-    return jsonDecode(response.body);
-  }
+    String symbol) async {
+  final response = await http.get(
+    Uri.parse(
+      '${AppConstants.baseUrl}/stockdata'
+      '/$symbol/quote'),
+    headers: _headers,
+  );
+  return jsonDecode(response.body);
+}
 
   Future<Map<String, dynamic>> getFundamentals(
       String symbol) async {
@@ -263,9 +264,13 @@ Future<Map<String, dynamic>> getStockFundamentals(
     String symbol) async {
   final response = await http.get(
     Uri.parse(
-      '${AppConstants.baseUrl}/stockdata/$symbol/fundamentals'),
+      '${AppConstants.baseUrl}/stockdata'
+      '/$symbol/fundamentals'),
     headers: _headers,
   );
+  if (response.statusCode == 403) {
+    throw Exception('TOKEN_EXPIRED');
+  }
   return jsonDecode(response.body);
 }
 
@@ -273,10 +278,15 @@ Future<Map<String, dynamic>> getStockTechnicals(
     String symbol) async {
   final response = await http.get(
     Uri.parse(
-      '${AppConstants.baseUrl}/stockdata/$symbol/technicals'),
+      '${AppConstants.baseUrl}/stockdata'
+      '/$symbol/technicals'),
     headers: _headers,
   );
+  if (response.statusCode == 403) {
+    throw Exception('TOKEN_EXPIRED');
+  }
   return jsonDecode(response.body);
 }
+
 
 }

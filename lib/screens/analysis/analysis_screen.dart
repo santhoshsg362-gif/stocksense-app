@@ -41,8 +41,9 @@ void initState() {
   _initWebView();
   // Auto-load metrics after frame builds
   WidgetsBinding.instance
-    .addPostFrameCallback((_) {
-    _autoLoadMetrics();
+  .addPostFrameCallback((_) {
+  _autoLoadMetrics();
+  _loadLivePrice();
   });
 }
 
@@ -135,17 +136,23 @@ void initState() {
       .isNotEmpty) return;
 
   try {
+    // Fetch real fundamentals from yfinance
     final fundData =
       await _api.getStockFundamentals(
         widget.symbol);
+
+    // Fetch real technicals from yfinance
     final techData =
       await _api.getStockTechnicals(
         widget.symbol);
 
     // Add fundamental metrics
     fundData.forEach((key, value) {
-      if (value.toString()
-          .contains('Add manually')) return;
+      if (value == null ||
+          value.toString().isEmpty ||
+          value.toString() == '0' ||
+          value.toString()
+            .contains('unavailable')) return;
       provider.addFundamentalMetric(
         widget.symbol,
         FundamentalMetric(
@@ -157,9 +164,11 @@ void initState() {
 
     // Add technical metrics
     techData.forEach((key, value) {
-      if (value.toString()
-          .contains('Add manually')) return;
-      final parts = value.toString().split(' — ');
+      if (value == null ||
+          value.toString().isEmpty ||
+          value.toString() == '0') return;
+      final parts = value.toString()
+        .split(' — ');
       provider.addTechnicalMetric(
         widget.symbol,
         TechnicalMetric(
@@ -172,7 +181,7 @@ void initState() {
     });
 
   } catch (e) {
-    // Silent fail — user can add manually
+    debugPrint('Auto-load failed: $e');
   }
 }
 
@@ -1591,5 +1600,29 @@ Note: This analysis is based only on the metrics the user has provided. More met
       ),
     );
   }
+
+  double _livePrice = 0;
+double _liveChange = 0;
+double _liveChangePct = 0;
+
+Future<void> _loadLivePrice() async {
+  try {
+    final quote = await _api.getStockQuote(
+      widget.symbol);
+    setState(() {
+      _livePrice = double.tryParse(
+        quote['price']?.toString() ?? '0'
+      ) ?? 0;
+      _liveChange = double.tryParse(
+        quote['change']?.toString() ?? '0'
+      ) ?? 0;
+      _liveChangePct = double.tryParse(
+        quote['changePercent']?.toString()
+        ?? '0') ?? 0;
+    });
+  } catch (e) {
+    // silent fail
+  }
+}
  
 }

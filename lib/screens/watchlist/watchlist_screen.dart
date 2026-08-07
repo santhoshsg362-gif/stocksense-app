@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
 import '../analysis/analysis_screen.dart';
+import 'dart:async';
 
 class WatchlistScreen extends StatefulWidget {
   const WatchlistScreen({super.key});
@@ -16,44 +17,62 @@ class WatchlistScreen extends StatefulWidget {
 class _WatchlistScreenState
     extends State<WatchlistScreen> {
 
+  Map<String, double> _livePrices = {};
+  Map<String, double> _liveChangePct = {};
+  Timer? _refreshTimer;
+
   List<dynamic> _watchlist = [];
   bool _isLoading = true;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _loadWatchlist();
-  }
+void initState() {
+  super.initState();
+  _loadHoldings();
+  // Auto refresh every 30 seconds
+  _refreshTimer = Timer.periodic(
+    const Duration(seconds: 30),
+    (_) => _loadLivePrices(),
+  );
+}
+
+@override
+void dispose() {
+  _refreshTimer?.cancel();
+  super.dispose();
+}
 
   ApiService get _api {
     final token = context.read<AuthProvider>().token;
     return ApiService(token: token);
   }
 
-  Future<void> _loadWatchlist() async {
+ Future<void> _loadWatchlist() async {
+  setState(() {
+    _isLoading = true;
+    _error = null;
+  });
+  try {
+    final data = await _api.getWatchlist();
     setState(() {
-      _isLoading = true;
-      _error = null;
+      _watchlist = data;
+      _isLoading = false;
     });
-    try {
-      final data = await _api.getWatchlist();
-      setState(() {
-        _watchlist = data;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (e.toString().contains('TOKEN_EXPIRED')) {
-        if (!mounted) return;
-        await context.read<AuthProvider>().logout();
-        return;
-      }
-      setState(() {
-        _error = 'Could not load watchlist';
-        _isLoading = false;
-      });
+    _loadLivePrices(); // add this line
+  } catch (e) {
+    if (e.toString().contains(
+        'TOKEN_EXPIRED')) {
+      if (!mounted) return;
+      await context
+        .read<AuthProvider>().logout();
+      return;
     }
+    setState(() {
+      _error = 'Could not load watchlist';
+      _isLoading = false;
+    });
   }
+}
 
   double _getPriceDiff(
       double addedPrice, double currentPrice) {
@@ -213,35 +232,89 @@ class _WatchlistScreenState
               const SizedBox(height: 12),
 
               // ── Price comparison ─────────────
-              Row(
-                children: [
-                  Expanded(
-                    child: _priceBox(
-                      'Added Price',
-                      'Rs. ${addedPrice.toStringAsFixed(2)}',
-                      Colors.grey[700]!,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _priceBox(
-                      'Current Price',
-                      'Rs. ${currentPrice.toStringAsFixed(2)}',
-                      AppTheme.primaryBlue,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _priceBox(
-                      'Change',
-                      '${isPositive ? '+' : ''}${priceDiff.toStringAsFixed(2)}%',
-                      isPositive
-                        ? AppTheme.green
-                        : AppTheme.red,
-                    ),
-                  ),
-                ],
+Builder(builder: (context) {
+  final symbol =
+    item['symbol']?.toString() ?? '';
+  final addedPrice = double.tryParse(
+    item['addedPrice']?.toString()
+    ?? '0') ?? 0;
+  final livePrice =
+    _livePrices[symbol] ?? 0;
+  final currentPrice = livePrice > 0
+    ? livePrice : addedPrice;
+  final priceDiff = addedPrice > 0
+    ? ((currentPrice - addedPrice) /
+        addedPrice * 100)
+    : 0.0;
+  final isPositive = priceDiff >= 0;
+  final dayChangePct =
+    _liveChangePct[symbol] ?? 0;
+  final isDayUp = dayChangePct >= 0;
+
+  return Column(
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: _priceBox(
+              'Added Price',
+              'Rs. ${addedPrice.toStringAsFixed(2)}',
+              Colors.grey[700]!,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _priceBox(
+              'Current Price',
+              livePrice > 0
+                ? 'Rs. ${livePrice.toStringAsFixed(2)}'
+                : 'Loading...',
+              AppTheme.primaryBlue,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _priceBox(
+              'Since Added',
+              '${isPositive ? '+' : ''}${priceDiff.toStringAsFixed(2)}%',
+              isPositive
+                ? AppTheme.green
+                : AppTheme.red,
+            ),
+          ),
+        ],
+      ),
+      if (livePrice > 0) ...[
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment:
+            MainAxisAlignment.end,
+          children: [
+            Icon(
+              isDayUp
+                ? Icons.arrow_upward
+                : Icons.arrow_downward,
+              size: 11,
+              color: isDayUp
+                ? AppTheme.green
+                : AppTheme.red,
+            ),
+            Text(
+              '${dayChangePct.abs().toStringAsFixed(2)}% today',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDayUp
+                  ? AppTheme.green
+                  : AppTheme.red,
+                fontWeight: FontWeight.w600,
               ),
+            ),
+          ],
+        ),
+      ],
+    ],
+  );
+}),
 
               // ── Target price ─────────────────
               if (targetPrice != null) ...[
@@ -818,4 +891,32 @@ class _WatchlistScreenState
       ),
     );
   }
+
+  Future<void> _loadLivePrices() async {
+  for (var item in _watchlist) {
+    try {
+      final symbol =
+        item['symbol']?.toString() ?? '';
+      if (symbol.isEmpty) continue;
+      final quote =
+        await _api.getStockQuote(symbol);
+      final price = double.tryParse(
+        quote['price']?.toString() ?? '0'
+      ) ?? 0;
+      final changePct = double.tryParse(
+        quote['changePercent']
+          ?.toString() ?? '0'
+      ) ?? 0;
+      if (price > 0 && mounted) {
+        setState(() {
+          _livePrices[symbol] = price;
+          _liveChangePct[symbol] = changePct;
+        });
+      }
+    } catch (e) {
+      // silent fail
+    }
+  }
+}
+
 }
