@@ -28,7 +28,7 @@ class _WatchlistScreenState
   @override
 void initState() {
   super.initState();
-  _loadHoldings();
+  _loadWatchlist();
   // Auto refresh every 30 seconds
   _refreshTimer = Timer.periodic(
     const Duration(seconds: 30),

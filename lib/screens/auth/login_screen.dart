@@ -5,6 +5,8 @@ import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
 import '../home/main_screen.dart';
 import 'register_screen.dart';
+import '../../services/google_auth_service.dart';
+import '../home/main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -267,29 +269,68 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
 
                     // Google Sign-In button
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context)
-                          .showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Google Sign-In coming soon'),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.g_mobiledata,
-                        size: 24),
-                      label: const Text(
-                        'Continue with Google'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(
-                          double.infinity, 52),
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                            BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
+OutlinedButton.icon(
+  onPressed: () async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final response = await
+        GoogleAuthService.signIn();
+
+      if (response == null) {
+        // User cancelled
+        setState(() =>
+          _isLoading = false);
+        return;
+      }
+
+      if (response.containsKey('token')) {
+        if (!mounted) return;
+        await context
+          .read<AuthProvider>()
+          .saveAuth(
+            response['token'],
+            response['email'],
+            response['fullName'],
+          );
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+              const MainScreen()),
+        );
+      } else {
+        setState(() {
+          _errorMessage =
+            response['message'] ??
+            'Google Sign-In failed';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString()
+          .replaceAll('Exception: ', '');
+        _isLoading = false;
+      });
+    }
+  },
+  icon: const Icon(
+    Icons.g_mobiledata, size: 24),
+  label: const Text(
+    'Continue with Google'),
+  style: OutlinedButton.styleFrom(
+    minimumSize: const Size(
+      double.infinity, 52),
+    shape: RoundedRectangleBorder(
+      borderRadius:
+        BorderRadius.circular(12),
+    ),
+  ),
+),
                   ],
                 ),
               ),

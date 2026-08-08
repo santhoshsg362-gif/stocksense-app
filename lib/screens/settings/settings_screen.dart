@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../config/app_theme.dart';
 import '../auth/login_screen.dart';
+import '../../services/google_auth_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -168,18 +169,18 @@ class SettingsScreen extends StatelessWidget {
           // Logout button
           ElevatedButton.icon(
             onPressed: () async {
-              await context
-                .read<AuthProvider>()
-                .logout();
-              if (!context.mounted) return;
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                    const LoginScreen()),
-                (route) => false,
-              );
-            },
+            await GoogleAuthService.signOut();
+            await context
+              .read<AuthProvider>()
+              .logout();
+            if (!context.mounted) return;
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LoginScreen()),
+              (route) => false,
+            );
+          },
             icon: const Icon(Icons.logout),
             label: const Text('Logout'),
             style: ElevatedButton.styleFrom(

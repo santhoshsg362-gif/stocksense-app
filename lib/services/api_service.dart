@@ -288,5 +288,16 @@ Future<Map<String, dynamic>> getStockTechnicals(
   return jsonDecode(response.body);
 }
 
-
+Future<Map<String, dynamic>> googleSignIn(
+    String idToken) async {
+  final response = await http.post(
+    Uri.parse(
+      '${AppConstants.baseUrl}/auth/google'),
+    headers: _headers,
+    body: jsonEncode({
+      'idToken': idToken,
+    }),
+  );
+  return jsonDecode(response.body);
+}
 }
