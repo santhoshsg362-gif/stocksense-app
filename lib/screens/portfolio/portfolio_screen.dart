@@ -258,26 +258,48 @@ void dispose() {
                     ],
                   ),
                 ),
-                Container(
-                  padding:
-                    const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isProfit
-                      ? Colors.green[700]
-                      : Colors.red[700],
-                    borderRadius:
-                      BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${isProfit ? '+' : ''}Rs. ${totalPnl.toStringAsFixed(0)} (${totalPnlPct.toStringAsFixed(2)}%)',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                Column(
+                  crossAxisAlignment:
+                    CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Current Value',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
+                    Text(
+                      'Rs. ${totalCurrent.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isProfit
+                          ? Colors.green[700]
+                          : Colors.red[700],
+                        borderRadius:
+                          BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${isProfit ? '+' : ''}Rs. ${totalPnl.toStringAsFixed(0)} '
+                        '(${totalPnlPct.toStringAsFixed(2)}%)',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

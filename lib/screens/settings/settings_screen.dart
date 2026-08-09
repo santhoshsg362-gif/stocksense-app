@@ -5,6 +5,7 @@ import '../../providers/theme_provider.dart';
 import '../../config/app_theme.dart';
 import '../auth/login_screen.dart';
 import '../../services/google_auth_service.dart';
+import 'tradebook_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -105,6 +106,40 @@ class SettingsScreen extends StatelessWidget {
               activeColor: AppTheme.primaryBlue,
             ),
           ),
+
+        const SizedBox(height: 24),
+
+          // Tradebook section
+          Text(
+            'ACTIVITY',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.receipt_long_outlined,
+                color: AppTheme.primaryBlue,
+              ),
+              title: const Text('Tradebook'),
+              subtitle: const Text(
+                'Buy and sell history'),
+              trailing: const Icon(
+                Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                    const TradebookScreen()),
+              ),
+            ),
+          ),
+
 
           const SizedBox(height: 24),
 

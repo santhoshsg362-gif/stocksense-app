@@ -300,4 +300,17 @@ Future<Map<String, dynamic>> googleSignIn(
   );
   return jsonDecode(response.body);
 }
+
+Future<List<dynamic>> getTransactions()
+    async {
+  final response = await http.get(
+    Uri.parse(
+      '${AppConstants.baseUrl}/transactions'),
+    headers: _headers,
+  );
+  if (response.statusCode == 403) {
+    throw Exception('TOKEN_EXPIRED');
+  }
+  return jsonDecode(response.body);
+}
 }

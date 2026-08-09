@@ -67,17 +67,28 @@ void initState() {
         _buildChartUrl(_selectedInterval)));
   }
 
-  String _buildChartUrl(String interval) {
-    return 'https://www.tradingview.com/'
-      'widgetsnippet/?symbol=NSE%3A'
-      '${widget.symbol}'
-      '&interval=$interval'
-      '&theme=dark'
-      '&style=1'
-      '&locale=en'
-      '&hide_top_toolbar=false'
-      '&save_image=false';
-  }
+ String _buildChartUrl(String interval) {
+  return 'https://s.tradingview.com/widgetembed/'
+    '?frameElementId=tradingview_stocksense'
+    '&symbol=NSE%3A${widget.symbol}'
+    '&interval=$interval'
+    '&hidesidetoolbar=0'
+    '&hidetoptoolbar=0'
+    '&symboledit=1'
+    '&saveimage=0'
+    '&toolbarbg=f1f3f6'
+    '&studies=%5B%5D'
+    '&theme=dark'
+    '&style=1'
+    '&timezone=Asia%2FKolkata'
+    '&studies_overrides=%7B%7D'
+    '&overrides=%7B%7D'
+    '&enabled_features=%5B%5D'
+    '&disabled_features=%5B%5D'
+    '&locale=en'
+    '&utm_source=stocksense'
+    '&utm_medium=widget';
+}
 
   @override
   Widget build(BuildContext context) {
