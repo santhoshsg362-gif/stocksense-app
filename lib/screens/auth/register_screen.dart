@@ -57,6 +57,7 @@ class _RegisterScreenState
           response['token'],
           response['email'],
           response['fullName'],
+          userId: response['userId'],
         );
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
@@ -141,9 +142,10 @@ class _RegisterScreenState
                       keyboardType:
                         TextInputType.emailAddress,
                       decoration: const InputDecoration(
-                        labelText: 'Email',
+                        labelText: 'Email or User ID',
                         prefixIcon: Icon(
-                          Icons.email_outlined),
+                          Icons.person_outline),
+                        hintText: 'e.g. SS123456',
                       ),
                       validator: (value) {
                         if (value == null ||
@@ -178,17 +180,38 @@ class _RegisterScreenState
                         ),
                       ),
                       validator: (value) {
-                        if (value == null ||
-                            value.isEmpty) {
+                        if (value == null || value.isEmpty) {
                           return 'Please enter a password';
                         }
-                        if (value.length < 6) {
-                          return 'Password must be at '
-                            'least 6 characters';
+                        if (value.length < 8) {
+                          return 'Minimum 8 characters';
+                        }
+                        if (!value.contains(
+                            RegExp(r'[A-Z]'))) {
+                          return 'Need at least one uppercase letter';
+                        }
+                        if (!value.contains(
+                            RegExp(r'[a-z]'))) {
+                          return 'Need at least one lowercase letter';
+                        }
+                        if (!value.contains(
+                            RegExp(r'[0-9]'))) {
+                          return 'Need at least one number';
+                        }
+                        if (!value.contains(
+                            RegExp(r'[@$!%*?&#]'))) {
+                          return 'Need one special character (@\$!%*?&#)';
                         }
                         return null;
                       },
                     ),
+
+                    // Password strength indicator
+                      if (_passwordController.text.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildPasswordStrength(
+                          _passwordController.text),
+                      ],
                     const SizedBox(height: 16),
 
                     // Confirm password
@@ -297,4 +320,63 @@ class _RegisterScreenState
       ),
     );
   }
+
+  Widget _buildPasswordStrength(String password) {
+  int strength = 0;
+  if (password.length >= 8) strength++;
+  if (password.contains(
+      RegExp(r'[A-Z]'))) strength++;
+  if (password.contains(
+      RegExp(r'[a-z]'))) strength++;
+  if (password.contains(
+      RegExp(r'[0-9]'))) strength++;
+  if (password.contains(
+      RegExp(r'[@$!%*?&#]'))) strength++;
+
+  Color color;
+  String label;
+  if (strength <= 2) {
+    color = AppTheme.red;
+    label = 'Weak';
+  } else if (strength <= 3) {
+    color = Colors.orange;
+    label = 'Medium';
+  } else if (strength <= 4) {
+    color = Colors.lightGreen;
+    label = 'Strong';
+  } else {
+    color = AppTheme.green;
+    label = 'Very Strong';
+  }
+
+  return Column(
+    crossAxisAlignment:
+      CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: LinearProgressIndicator(
+              value: strength / 5,
+              backgroundColor:
+                Colors.grey[300],
+              valueColor:
+                AlwaysStoppedAnimation(
+                  color),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
 }

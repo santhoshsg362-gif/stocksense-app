@@ -6,6 +6,7 @@ import '../../config/app_theme.dart';
 import '../analysis/analysis_screen.dart';
 import '../auth/login_screen.dart';
 import 'dart:async';
+import '../../services/alert_service.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -85,31 +86,64 @@ void dispose() {
   }
 
   Future<void> _loadLivePrices() async {
-    for (var holding in _holdings) {
-      try {
-        final symbol =
-          holding['symbol']?.toString() ?? '';
-        if (symbol.isEmpty) continue;
-        final quote =
-          await _api.getStockQuote(symbol);
-        final price = double.tryParse(
-          quote['price']?.toString() ?? '0'
-        ) ?? 0;
-        final changePct = double.tryParse(
-          quote['changePercent']
-            ?.toString() ?? '0'
-        ) ?? 0;
-        if (price > 0 && mounted) {
-          setState(() {
-            _livePrices[symbol] = price;
-            _liveChangePct[symbol] = changePct;
-          });
+  for (var holding in _holdings) {
+    try {
+      final symbol =
+        holding['symbol']?.toString() ?? '';
+      if (symbol.isEmpty) continue;
+      final quote =
+        await _api.getStockQuote(symbol);
+      final price = double.tryParse(
+        quote['price']?.toString() ?? '0'
+      ) ?? 0;
+      final changePct = double.tryParse(
+        quote['changePercent']
+          ?.toString() ?? '0') ?? 0;
+      if (price > 0 && mounted) {
+        setState(() {
+          _livePrices[symbol] = price;
+          _liveChangePct[symbol] = changePct;
+        });
+
+        // Check stop loss
+        final stopLoss = double.tryParse(
+          holding['stopLoss']
+            ?.toString() ?? '0') ?? 0;
+        if (stopLoss > 0 &&
+            price <= stopLoss) {
+          await AlertService.showAlert(
+            title:
+              '⚠️ Stop Loss Hit — $symbol',
+            body:
+              '$symbol has fallen to '
+              'Rs. ${price.toStringAsFixed(2)}, '
+              'below your stop loss of '
+              'Rs. ${stopLoss.toStringAsFixed(2)}',
+          );
         }
-      } catch (e) {
-        // silent fail — show buy price instead
+
+        // Check target price
+        final targetPrice = double.tryParse(
+          holding['targetPrice']
+            ?.toString() ?? '0') ?? 0;
+        if (targetPrice > 0 &&
+            price >= targetPrice) {
+          await AlertService.showAlert(
+            title:
+              '🎯 Target Hit — $symbol',
+            body:
+              '$symbol has reached '
+              'Rs. ${price.toStringAsFixed(2)}, '
+              'your target of '
+              'Rs. ${targetPrice.toStringAsFixed(2)}',
+          );
+        }
       }
+    } catch (e) {
+      // silent fail
     }
   }
+}
 
   double get _totalInvestment {
     return _holdings.fold(0, (sum, h) {
@@ -615,6 +649,93 @@ void dispose() {
                 ),
               ],
 
+              // Stop loss and target display
+if ((holding['stopLoss'] != null &&
+    holding['stopLoss'] != 0) ||
+    (holding['targetPrice'] != null &&
+    holding['targetPrice'] != 0)) ...[
+  const SizedBox(height: 8),
+  Row(
+    children: [
+      if (holding['stopLoss'] != null
+          && holding['stopLoss'] != 0)
+        Expanded(
+          child: Container(
+            padding:
+              const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.red
+                .withOpacity(0.1),
+              borderRadius:
+                BorderRadius.circular(8),
+              border: Border.all(
+                color: AppTheme.red
+                  .withOpacity(0.3)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'Stop Loss',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppTheme.red),
+                ),
+                Text(
+                  'Rs. ${holding['stopLoss']}',
+                  style: const TextStyle(
+                    fontWeight:
+                      FontWeight.bold,
+                    color: AppTheme.red,
+                    fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      if (holding['stopLoss'] != null
+          && holding['targetPrice'] != null)
+        const SizedBox(width: 8),
+      if (holding['targetPrice'] != null
+          && holding['targetPrice'] != 0)
+        Expanded(
+          child: Container(
+            padding:
+              const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.green
+                .withOpacity(0.1),
+              borderRadius:
+                BorderRadius.circular(8),
+              border: Border.all(
+                color: AppTheme.green
+                  .withOpacity(0.3)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'Target',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppTheme.green),
+                ),
+                Text(
+                  'Rs. ${holding['targetPrice']}',
+                  style: const TextStyle(
+                    fontWeight:
+                      FontWeight.bold,
+                    color: AppTheme.green,
+                    fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  ),
+],
+
               const SizedBox(height: 10),
 
               // ── Tap hint ─────────────────
@@ -726,8 +847,11 @@ void dispose() {
     final searchCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final qtyCtrl = TextEditingController();
+    final stopLossCtrl = TextEditingController();
+    final targetPriceCtrl = TextEditingController();
+
     List<dynamic> searchResults = [];
-    bool isSearching = false;
+    bool isSearching = false; 
     Map<String, dynamic>? selectedStock;
     String exchange = 'NSE';
 
@@ -1024,6 +1148,29 @@ void dispose() {
                       TextInputType.number,
                   ),
                   const SizedBox(height: 12),
+                  TextField(
+                    controller: stopLossCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Stop Loss Price (optional)',
+                      prefixText: 'Rs. ',
+                      helperText:
+                        'Alert when price falls below this',
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: targetPriceCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Target Price (optional)',
+                      prefixText: 'Rs. ',
+                      helperText:
+                        'Alert when price reaches this',
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: exchange,
                     decoration:
@@ -1050,19 +1197,18 @@ void dispose() {
                       }
                       try {
                         await _api.addHolding({
-                          'symbol':
-                            selectedStock![
-                              'symbol'],
+                          'symbol': selectedStock!['symbol'],
                           'companyName':
-                            selectedStock![
-                              'companyName'],
-                          'buyPrice':
-                            double.parse(
-                              priceCtrl.text),
-                          'quantity':
-                            double.parse(
-                              qtyCtrl.text),
+                            selectedStock!['companyName'],
+                          'buyPrice': double.parse(priceCtrl.text),
+                          'quantity': double.parse(qtyCtrl.text),
                           'exchange': exchange,
+                          if (stopLossCtrl.text.isNotEmpty)
+                            'stopLoss': double.parse(
+                              stopLossCtrl.text),
+                          if (targetPriceCtrl.text.isNotEmpty)
+                            'targetPrice': double.parse(
+                              targetPriceCtrl.text),
                         });
                         if (!context.mounted)
                           return;

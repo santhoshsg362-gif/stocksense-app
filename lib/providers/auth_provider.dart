@@ -10,6 +10,8 @@ class AuthProvider extends ChangeNotifier {
   String? _token;
   String? _userEmail;
   String? _userName;
+  String? _userId;
+  String? get userId => _userId;
   bool _isLoading = false;
 
   String? get token => _token;
@@ -23,29 +25,42 @@ class AuthProvider extends ChangeNotifier {
   }
 
 
-  Future<void> _loadToken() async {
-    _token = await _storage.read(
-      key: AppConstants.tokenKey);
-    _userEmail = await _storage.read(
-      key: AppConstants.userEmailKey);
-    _userName = await _storage.read(
-      key: AppConstants.userNameKey);
-    notifyListeners();
-  }
+ Future<void> _loadToken() async {
+  _token = await _storage.read(
+    key: AppConstants.tokenKey);
+  _userEmail = await _storage.read(
+    key: AppConstants.userEmailKey);
+  _userName = await _storage.read(
+    key: AppConstants.userNameKey);
+  _userId = await _storage.read(
+    key: 'user_id');
+  notifyListeners();
+}
 
-  Future<void> saveAuth(String token,
-      String email, String name) async {
-    _token = token;
-    _userEmail = email;
-    _userName = name;
+  Future<void> saveAuth(
+    String token,
+    String email,
+    String name,
+    {String? userId}) async {
+  _token = token;
+  _userEmail = email;
+  _userName = name;
+  _userId = userId;
+  await _storage.write(
+    key: AppConstants.tokenKey,
+    value: token);
+  await _storage.write(
+    key: AppConstants.userEmailKey,
+    value: email);
+  await _storage.write(
+    key: AppConstants.userNameKey,
+    value: name);
+  if (userId != null) {
     await _storage.write(
-      key: AppConstants.tokenKey, value: token);
-    await _storage.write(
-      key: AppConstants.userEmailKey, value: email);
-    await _storage.write(
-      key: AppConstants.userNameKey, value: name);
-    notifyListeners();
+      key: 'user_id', value: userId);
   }
+  notifyListeners();
+}
 
   Future<void> logout() async {
     _token = null;

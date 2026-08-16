@@ -6,6 +6,8 @@ import '../fno/fno_screen.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../analysis/analysis_screen.dart';
+import '../analysis/analysis_screen.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -736,15 +738,31 @@ Future<void> _addToWatchlist(
   }
 
   Widget _buildMoverTile(
-      Map<String, dynamic> mover, bool isGainer) {
-    final color = isGainer ?
-      AppTheme.green : AppTheme.red;
+    Map<String, dynamic> mover,
+    bool isGainer) {
+  final color = isGainer
+    ? AppTheme.green : AppTheme.red;
 
-    return ListTile(
+  return GestureDetector(
+    onTap: () => Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AnalysisScreen(
+          symbol:
+            mover['symbol'] ?? '',
+          companyName:
+            mover['companyName']
+              ?? mover['symbol']
+              ?? '',
+        ),
+      ),
+    ),
+    child: ListTile(
       dense: true,
       leading: CircleAvatar(
         radius: 18,
-        backgroundColor: color.withOpacity(0.1),
+        backgroundColor:
+          color.withOpacity(0.1),
         child: Text(
           (mover['symbol'] ?? 'X')
             .substring(0, 1),
@@ -772,8 +790,10 @@ Future<void> _addToWatchlist(
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment:
+          MainAxisAlignment.center,
+        crossAxisAlignment:
+          CrossAxisAlignment.end,
         children: [
           Text(
             mover['lastPrice'] ?? '0',
@@ -792,8 +812,9 @@ Future<void> _addToWatchlist(
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ── IPO Section ──────────────────────────────────
   Widget _buildIpoSection() {
@@ -823,39 +844,91 @@ Future<void> _addToWatchlist(
     );
   }
 
-  Widget _buildIpoCard(Map<String, dynamic> ipo) {
-    final status = ipo['status'] ?? 'Unknown';
-    final isOpen = status == 'Open';
+ Widget _buildIpoCard(
+    Map<String, dynamic> ipo) {
+  final status = ipo['status'] ?? 'Unknown';
+  final isOpen = status == 'Open' ||
+    status == 'Active';
 
+  // Check if this is a placeholder
+  final isPlaceholder =
+    ipo['openDate'] == 'N/A' ||
+    (ipo['companyName'] as String)
+      .contains('chittorgarh') ||
+    (ipo['companyName'] as String)
+      .contains('unavailable');
+
+  if (isPlaceholder) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin:
+        const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: const Icon(
+          Icons.open_in_browser,
+          color: AppTheme.primaryBlue,
+        ),
+        title: const Text(
+          'View Current IPOs'),
+        subtitle: const Text(
+          'Tap to see live IPO listings'),
+        trailing: const Icon(
+          Icons.chevron_right),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+              _IpoWebView()),
+        ),
+      ),
+    );
+  }
+
+  return GestureDetector(
+    onTap: () => Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _IpoWebView()),
+    ),
+    child: Card(
+      margin:
+        const EdgeInsets.only(bottom: 10),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding:
+          const EdgeInsets.all(14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+            CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
+                MainAxisAlignment
+                  .spaceBetween,
               children: [
                 Expanded(
                   child: Text(
                     ipo['companyName'] ?? '',
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                        FontWeight.bold,
                       fontSize: 14,
                     ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                  padding:
+                    const EdgeInsets
+                      .symmetric(
+                      horizontal: 8,
+                      vertical: 4),
                   decoration: BoxDecoration(
                     color: isOpen
-                      ? AppTheme.green.withOpacity(0.1)
-                      : Colors.orange.withOpacity(0.1),
+                      ? AppTheme.green
+                          .withOpacity(0.1)
+                      : Colors.orange
+                          .withOpacity(0.1),
                     borderRadius:
-                      BorderRadius.circular(20),
+                      BorderRadius
+                        .circular(20),
                   ),
                   child: Text(
                     status,
@@ -864,7 +937,8 @@ Future<void> _addToWatchlist(
                         ? AppTheme.green
                         : Colors.orange,
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight:
+                        FontWeight.w600,
                     ),
                   ),
                 ),
@@ -887,16 +961,27 @@ Future<void> _addToWatchlist(
             const SizedBox(height: 8),
             Row(
               children: [
-                Icon(Icons.calendar_today,
+                Icon(
+                  Icons.calendar_today,
                   size: 12,
                   color: Colors.grey[600]),
                 const SizedBox(width: 4),
                 Text(
-                  '${ipo['openDate'] ?? ''} — '
+                  '${ipo['openDate'] ?? ''}'
+                  ' — '
                   '${ipo['closeDate'] ?? ''}',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey[600],
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Tap for details →',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color:
+                      AppTheme.primaryBlue,
                   ),
                 ),
               ],
@@ -904,8 +989,9 @@ Future<void> _addToWatchlist(
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _ipoDetail(String label, String value) {
     return Expanded(
@@ -970,6 +1056,26 @@ Future<void> _addToWatchlist(
         fontSize: 18,
         fontWeight: FontWeight.bold,
       ),
+    );
+  }
+}
+
+class _IpoWebView extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final controller = WebViewController()
+      ..setJavaScriptMode(
+        JavaScriptMode.unrestricted)
+      ..loadRequest(Uri.parse(
+        'https://www.chittorgarh.com'
+        '/report/ipo/9/'));
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Current IPOs'),
+      ),
+      body: WebViewWidget(
+        controller: controller),
     );
   }
 }

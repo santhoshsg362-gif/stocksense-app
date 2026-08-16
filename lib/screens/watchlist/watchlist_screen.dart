@@ -5,6 +5,7 @@ import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
 import '../analysis/analysis_screen.dart';
 import 'dart:async';
+import '../../services/alert_service.dart';
 
 class WatchlistScreen extends StatefulWidget {
   const WatchlistScreen({super.key});
@@ -892,7 +893,7 @@ Builder(builder: (context) {
     );
   }
 
-  Future<void> _loadLivePrices() async {
+ Future<void> _loadLivePrices() async {
   for (var item in _watchlist) {
     try {
       final symbol =
@@ -905,13 +906,30 @@ Builder(builder: (context) {
       ) ?? 0;
       final changePct = double.tryParse(
         quote['changePercent']
-          ?.toString() ?? '0'
-      ) ?? 0;
+          ?.toString() ?? '0') ?? 0;
       if (price > 0 && mounted) {
         setState(() {
           _livePrices[symbol] = price;
           _liveChangePct[symbol] = changePct;
         });
+
+        // Check watchlist target
+        final targetPrice = double.tryParse(
+          item['targetPrice']
+            ?.toString() ?? '0') ?? 0;
+        if (targetPrice > 0 &&
+            price >= targetPrice) {
+          await AlertService.showAlert(
+            title:
+              '🎯 Target Hit — $symbol',
+            body:
+              '$symbol on your watchlist '
+              'has reached Rs. '
+              '${price.toStringAsFixed(2)}, '
+              'your target of Rs. '
+              '${targetPrice.toStringAsFixed(2)}',
+          );
+        }
       }
     } catch (e) {
       // silent fail

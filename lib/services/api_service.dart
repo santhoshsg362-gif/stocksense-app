@@ -303,14 +303,46 @@ Future<Map<String, dynamic>> googleSignIn(
 
 Future<List<dynamic>> getTransactions()
     async {
+  try {
+    final response = await http.get(
+      Uri.parse(
+        '${AppConstants.baseUrl}'
+        '/transactions'),
+      headers: _headers,
+    );
+    if (response.statusCode == 403) {
+      throw Exception('TOKEN_EXPIRED');
+    }
+    if (response.statusCode != 200) {
+      return [];
+    }
+    final body =
+      jsonDecode(response.body);
+    if (body is List) return body;
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
+Future<Map<String, dynamic>>
+    getStockFinancials(
+        String symbol) async {
   final response = await http.get(
     Uri.parse(
-      '${AppConstants.baseUrl}/transactions'),
+      '${AppConstants.baseUrl}/stockdata'
+      '/$symbol/financials'),
     headers: _headers,
   );
-  if (response.statusCode == 403) {
-    throw Exception('TOKEN_EXPIRED');
-  }
   return jsonDecode(response.body);
+}
+
+Future<void> deleteAccount() async {
+  await http.delete(
+    Uri.parse(
+      '${AppConstants.baseUrl}'
+      '/auth/delete-account'),
+    headers: _headers,
+  );
 }
 }

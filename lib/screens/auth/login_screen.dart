@@ -7,6 +7,7 @@ import '../home/main_screen.dart';
 import 'register_screen.dart';
 import '../../services/google_auth_service.dart';
 import '../home/main_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -51,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
           response['token'],
           response['email'],
           response['fullName'],
+          userId: response['userId'],
         );
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -201,6 +203,26 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
+
+                    // Forgot password link
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                const ForgotPasswordScreen()),
+                          ),
+                          child: const Text(
+                            'Forgot Password?',
+                            style: TextStyle(
+                              color: AppTheme.primaryBlue,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 12),
 
                     // Error message

@@ -17,6 +17,7 @@ class _TradebookScreenState
 
   List<dynamic> _transactions = [];
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -31,14 +32,22 @@ class _TradebookScreenState
   }
 
   Future<void> _loadTransactions() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
-      final data = await _api.getTransactions();
+      final data =
+        await _api.getTransactions();
       setState(() {
         _transactions = data;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
@@ -47,76 +56,112 @@ class _TradebookScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tradebook'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadTransactions,
+          ),
+        ],
       ),
       body: _isLoading
         ? const Center(
             child: CircularProgressIndicator())
-        : _transactions.isEmpty
+        : _error != null
           ? Center(
               child: Column(
                 mainAxisAlignment:
                   MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.receipt_long_outlined,
-                    size: 80,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No transactions yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight:
-                        FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Buy or sell stocks to see '
-                    'your history here',
-                    style: TextStyle(
-                      color: Colors.grey[600]),
+                  Icon(Icons.error_outline,
+                    size: 48,
+                    color: Colors.grey[400]),
+                  const SizedBox(height: 12),
+                  Text('Error: $_error'),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed:
+                      _loadTransactions,
+                    child:
+                      const Text('Retry'),
                   ),
                 ],
               ),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _transactions.length,
-              separatorBuilder: (_, __) =>
-                const SizedBox(height: 8),
-              itemBuilder: (_, i) =>
-                _buildTransactionCard(
-                  _transactions[i]),
-            ),
+          : _transactions.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment:
+                    MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons
+                        .receipt_long_outlined,
+                      size: 80,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No transactions yet',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight:
+                          FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Buy or sell stocks to '
+                      'see history here',
+                      style: TextStyle(
+                        color:
+                          Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.separated(
+                padding:
+                  const EdgeInsets.all(16),
+                itemCount:
+                  _transactions.length,
+                separatorBuilder: (_, __) =>
+                  const SizedBox(height: 8),
+                itemBuilder: (_, i) =>
+                  _buildCard(
+                    _transactions[i]),
+              ),
     );
   }
 
-  Widget _buildTransactionCard(
+  Widget _buildCard(
       Map<String, dynamic> tx) {
-
     final isBuy = tx['type'] == 'BUY';
     final color = isBuy
-      ? AppTheme.green
-      : AppTheme.red;
+      ? AppTheme.green : AppTheme.red;
     final price = double.tryParse(
-      tx['price']?.toString() ?? '0') ?? 0;
+      tx['price']?.toString() ?? '0'
+    ) ?? 0;
     final qty = double.tryParse(
-      tx['quantity']?.toString() ?? '0') ?? 0;
-    final total = price * qty;
+      tx['quantity']?.toString() ?? '0'
+    ) ?? 0;
+    final total = double.tryParse(
+      tx['totalAmount']?.toString() ?? '0'
+    ) ?? (price * qty);
 
-    // Format date
     String dateStr = '';
     try {
-      final dt = DateTime.parse(
-        tx['dateTime']?.toString() ?? '');
+      final raw =
+        tx['dateTime']?.toString() ?? '';
+      final dt = DateTime.parse(raw);
       dateStr =
-        '${dt.day}/${dt.month}/${dt.year} '
-        '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+        '${dt.day.toString().padLeft(2,'0')}/'
+        '${dt.month.toString().padLeft(2,'0')}/'
+        '${dt.year} '
+        '${dt.hour.toString().padLeft(2,'0')}:'
+        '${dt.minute.toString().padLeft(2,'0')}';
     } catch (_) {
-      dateStr = tx['dateTime']
-        ?.toString() ?? '';
+      dateStr =
+        tx['dateTime']?.toString() ?? '';
     }
 
     return Card(
@@ -124,29 +169,28 @@ class _TradebookScreenState
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            // Type badge
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color:
+                  color.withOpacity(0.1),
                 borderRadius:
                   BorderRadius.circular(10),
               ),
               child: Center(
                 child: Text(
-                  tx['type'] ?? 'BUY',
+                  isBuy ? 'BUY' : 'SELL',
                   style: TextStyle(
                     color: color,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                      FontWeight.bold,
                     fontSize: 11,
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 12),
-
-            // Stock info
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -155,7 +199,8 @@ class _TradebookScreenState
                   Text(
                     tx['symbol'] ?? '',
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                        FontWeight.bold,
                       fontSize: 15,
                     ),
                   ),
@@ -169,7 +214,7 @@ class _TradebookScreenState
                     overflow:
                       TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     dateStr,
                     style: TextStyle(
@@ -180,8 +225,6 @@ class _TradebookScreenState
                 ],
               ),
             ),
-
-            // Amount info
             Column(
               crossAxisAlignment:
                 CrossAxisAlignment.end,
@@ -189,15 +232,16 @@ class _TradebookScreenState
                 Text(
                   'Rs. ${total.toStringAsFixed(2)}',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                      FontWeight.bold,
                     fontSize: 14,
                     color: color,
                   ),
                 ),
                 Text(
-                  '${qty.toStringAsFixed(0)} '
-                  'shares @ Rs. '
-                  '${price.toStringAsFixed(2)}',
+                  '${qty.toStringAsFixed(0)}'
+                  ' @ Rs.'
+                  ' ${price.toStringAsFixed(2)}',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 11,

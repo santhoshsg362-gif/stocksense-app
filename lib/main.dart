@@ -6,9 +6,11 @@ import 'providers/auth_provider.dart';
 import 'providers/metrics_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/main_screen.dart';
+import 'services/alert_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AlertService.init();
   final metricsProvider = MetricsProvider();
   await metricsProvider.load();
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../providers/auth_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../models/stock_metrics.dart';
@@ -32,20 +35,36 @@ class _AnalysisScreenState
   String? _aiAnalysis;
   bool _isAiLoading = false;
   int _aiScore = 0;
+  Map<String, dynamic>? _financialsData;
+  late WebViewController _screenerController;
+  late WebViewController _ipoController;
+  bool _isFinancialsLoading = false;
+  List<double> _closingPrices = [];
+  List<String> _priceDates = [];
+  bool _isPriceLoading = true;
+  double _livePrice = 0;
+  double _liveChange = 0;
+  double _liveChangePct = 0;
 
   @override
-void initState() {
-  super.initState();
-  _tabController = TabController(
-    length: 4, vsync: this);
-  _initWebView();
-  // Auto-load metrics after frame builds
-  WidgetsBinding.instance
-  .addPostFrameCallback((_) {
-  _autoLoadMetrics();
-  _loadLivePrice();
-  });
-}
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: 5, vsync: this);
+    _initWebView();
+    _screenerController = WebViewController()
+  ..setJavaScriptMode(
+    JavaScriptMode.unrestricted)
+  ..loadRequest(Uri.parse(
+    'https://www.screener.in'
+    '/company/${widget.symbol}/'));
+    WidgetsBinding.instance
+      .addPostFrameCallback((_) {
+      _autoLoadMetrics();
+      _loadLivePrice();
+      _loadPriceHistory();
+    });
+  }
 
   @override
   void dispose() {
@@ -63,32 +82,209 @@ void initState() {
     _webController = WebViewController()
       ..setJavaScriptMode(
         JavaScriptMode.unrestricted)
-      ..loadRequest(Uri.parse(
-        _buildChartUrl(_selectedInterval)));
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            if (request.url.contains(
+                'tradingview.com/chart/') ||
+                request.url.contains(
+                'tradingview.com/mobile')) {
+              return NavigationDecision
+                .prevent;
+            }
+            return NavigationDecision
+              .navigate;
+          },
+        ),
+      )
+      ..loadHtmlString(
+        _buildChartHtml(_selectedInterval));
   }
 
- String _buildChartUrl(String interval) {
-  return 'https://s.tradingview.com/widgetembed/'
-    '?frameElementId=tradingview_stocksense'
-    '&symbol=NSE%3A${widget.symbol}'
-    '&interval=$interval'
-    '&hidesidetoolbar=0'
-    '&hidetoptoolbar=0'
-    '&symboledit=1'
-    '&saveimage=0'
-    '&toolbarbg=f1f3f6'
-    '&studies=%5B%5D'
-    '&theme=dark'
-    '&style=1'
-    '&timezone=Asia%2FKolkata'
-    '&studies_overrides=%7B%7D'
-    '&overrides=%7B%7D'
-    '&enabled_features=%5B%5D'
-    '&disabled_features=%5B%5D'
-    '&locale=en'
-    '&utm_source=stocksense'
-    '&utm_medium=widget';
+  String _buildChartHtml(String interval) {
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" 
+  content="width=device-width, 
+  initial-scale=1.0, 
+  maximum-scale=1.0">
+<style>
+* { margin: 0; padding: 0; 
+  box-sizing: border-box; }
+body { 
+  background: #131722; 
+  overflow: hidden; 
+  height: 100vh;
+  width: 100vw;
 }
+#chart { 
+  width: 100%; 
+  height: 100vh; 
+}
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<script 
+  type="text/javascript" 
+  src="https://s3.tradingview.com/tv.js">
+</script>
+<script type="text/javascript">
+new TradingView.widget({
+  "autosize": true,
+  "symbol": "NSE:${widget.symbol}",
+  "interval": "$interval",
+  "timezone": "Asia/Kolkata",
+  "theme": "dark",
+  "style": "1",
+  "locale": "en",
+  "toolbar_bg": "#131722",
+  "enable_publishing": false,
+  "withdateranges": true,
+  "hide_side_toolbar": false,
+  "allow_symbol_change": false,
+  "save_image": false,
+  "container_id": "chart",
+  "hide_popup_button": true,
+  "show_popup_button": false,
+  "no_referral_id": true,
+  "studies": [],
+  "show_popup_button": false,
+  "popup_width": "0",
+  "popup_height": "0"
+});
+</script>
+</body>
+</html>
+''';
+  }
+
+  Future<void> _loadLivePrice() async {
+    try {
+      final quote = await _api
+        .getStockQuote(widget.symbol);
+      setState(() {
+        _livePrice = double.tryParse(
+          quote['price']?.toString() ?? '0'
+        ) ?? 0;
+        _liveChange = double.tryParse(
+          quote['change']?.toString() ?? '0'
+        ) ?? 0;
+        _liveChangePct = double.tryParse(
+          quote['changePercent']
+            ?.toString() ?? '0') ?? 0;
+      });
+    } catch (e) {
+      // silent fail
+    }
+  }
+
+  Future<void> _loadPriceHistory() async {
+  try {
+    final token =
+      context.read<AuthProvider>().token;
+    final api = ApiService(token: token);
+    final quote = await api
+      .getStockQuote(widget.symbol);
+
+    // Build a simple price line from
+    // available data
+    final price = double.tryParse(
+      quote['price']?.toString() ?? '0'
+    ) ?? 0;
+    final high = double.tryParse(
+      quote['high']?.toString() ?? '0'
+    ) ?? 0;
+    final low = double.tryParse(
+      quote['low']?.toString() ?? '0'
+    ) ?? 0;
+    final prevClose = double.tryParse(
+      quote['previousClose']
+        ?.toString() ?? '0'
+    ) ?? 0;
+    final open = double.tryParse(
+      quote['open']?.toString() ?? '0'
+    ) ?? 0;
+
+    if (price > 0) {
+      setState(() {
+        // Show today's price movement
+        _closingPrices = [
+          prevClose,
+          open,
+          low,
+          high,
+          price,
+        ].where((p) => p > 0).toList();
+        _priceDates = [
+          'Prev',
+          'Open',
+          'Low',
+          'High',
+          'Current',
+        ];
+        _isPriceLoading = false;
+      });
+    } else {
+      setState(() =>
+        _isPriceLoading = false);
+    }
+  } catch (e) {
+    setState(() =>
+      _isPriceLoading = false);
+  }
+}
+
+  Future<void> _autoLoadMetrics() async {
+    final provider =
+      context.read<MetricsProvider>();
+    if (provider.getFundamentals(
+        widget.symbol).isNotEmpty) return;
+    try {
+      final fundData =
+        await _api.getStockFundamentals(
+          widget.symbol);
+      final techData =
+        await _api.getStockTechnicals(
+          widget.symbol);
+      fundData.forEach((key, value) {
+        if (value == null ||
+            value.toString().isEmpty ||
+            value.toString() == '0' ||
+            value.toString()
+              .contains('unavailable'))
+          return;
+        provider.addFundamentalMetric(
+          widget.symbol,
+          FundamentalMetric(
+            name: key,
+            value: value.toString(),
+          ),
+        );
+      });
+      techData.forEach((key, value) {
+        if (value == null ||
+            value.toString().isEmpty ||
+            value.toString() == '0') return;
+        final parts = value.toString()
+          .split(' — ');
+        provider.addTechnicalMetric(
+          widget.symbol,
+          TechnicalMetric(
+            name: key,
+            value: parts[0],
+            signal: parts.length > 1
+              ? parts[1] : null,
+          ),
+        );
+      });
+    } catch (e) {
+      debugPrint('Auto-load failed: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,13 +313,16 @@ void initState() {
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.primaryBlue,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: AppTheme.primaryBlue,
+          unselectedLabelColor:
+            Colors.grey,
+          indicatorColor:
+            AppTheme.primaryBlue,
           isScrollable: true,
           tabs: const [
             Tab(text: 'Chart'),
             Tab(text: 'Fundamental'),
             Tab(text: 'Technical'),
+            Tab(text: 'Financials'),
             Tab(text: 'AI Analysis'),
           ],
         ),
@@ -134,76 +333,113 @@ void initState() {
           _buildChartTab(),
           _buildFundamentalTab(),
           _buildTechnicalTab(),
+          _buildFinancialsTab(),
           _buildAiTab(),
         ],
       ),
     );
   }
-  Future<void> _autoLoadMetrics() async {
-  final provider = context.read<MetricsProvider>();
 
-  // Only auto-load if no metrics exist yet
-  if (provider.getFundamentals(widget.symbol)
-      .isNotEmpty) return;
 
-  try {
-    // Fetch real fundamentals from yfinance
-    final fundData =
-      await _api.getStockFundamentals(
-        widget.symbol);
-
-    // Fetch real technicals from yfinance
-    final techData =
-      await _api.getStockTechnicals(
-        widget.symbol);
-
-    // Add fundamental metrics
-    fundData.forEach((key, value) {
-      if (value == null ||
-          value.toString().isEmpty ||
-          value.toString() == '0' ||
-          value.toString()
-            .contains('unavailable')) return;
-      provider.addFundamentalMetric(
-        widget.symbol,
-        FundamentalMetric(
-          name: key,
-          value: value.toString(),
-        ),
-      );
-    });
-
-    // Add technical metrics
-    techData.forEach((key, value) {
-      if (value == null ||
-          value.toString().isEmpty ||
-          value.toString() == '0') return;
-      final parts = value.toString()
-        .split(' — ');
-      provider.addTechnicalMetric(
-        widget.symbol,
-        TechnicalMetric(
-          name: key,
-          value: parts[0],
-          signal: parts.length > 1
-            ? parts[1] : null,
-        ),
-      );
-    });
-
-  } catch (e) {
-    debugPrint('Auto-load failed: $e');
-  }
-}
-
-  // ── Chart Tab ────────────────────────────────────
+  // ── Chart Tab ──────────────────────────
   Widget _buildChartTab() {
     return Column(
       children: [
         _buildIntervalSelector(),
+        const SizedBox(height: 8),
+        if (_livePrice > 0)
+          Container(
+            padding:
+              const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8),
+            color: Theme.of(context)
+              .cardTheme.color,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                      CrossAxisAlignment
+                        .start,
+                    children: [
+                      Text(
+                        widget.symbol,
+                        style:
+                          const TextStyle(
+                          fontWeight:
+                            FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        widget.companyName,
+                        style: TextStyle(
+                          color:
+                            Colors.grey[600],
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment:
+                    CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Rs. ${_livePrice.toStringAsFixed(2)}',
+                      style:
+                        const TextStyle(
+                        fontSize: 22,
+                        fontWeight:
+                          FontWeight.bold,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Icon(
+                          _liveChange >= 0
+                            ? Icons
+                                .arrow_upward
+                            : Icons
+                                .arrow_downward,
+                          size: 12,
+                          color:
+                            _liveChange >= 0
+                            ? AppTheme.green
+                            : AppTheme.red,
+                        ),
+                        Text(
+                          '${_liveChange >= 0 ? '+' : ''}${_liveChange.toStringAsFixed(2)} (${_liveChangePct.toStringAsFixed(2)}%)',
+                          style: TextStyle(
+                            color:
+                              _liveChange >= 0
+                              ? AppTheme.green
+                              : AppTheme.red,
+                            fontSize: 12,
+                            fontWeight:
+                              FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         Expanded(
-          child: WebViewWidget(
-            controller: _webController),
+          child: _isPriceLoading
+            ? const Center(
+                child: CircularProgressIndicator())
+            : _closingPrices.isEmpty
+              ? _buildNoData(
+                  'Price data unavailable')
+              : Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildPriceChart(),
+                ),
         ),
       ],
     );
@@ -217,7 +453,8 @@ void initState() {
     ];
     return Container(
       height: 36,
-      color: Theme.of(context).cardTheme.color,
+      color:
+        Theme.of(context).cardTheme.color,
       child: Row(
         mainAxisAlignment:
           MainAxisAlignment.spaceEvenly,
@@ -228,13 +465,14 @@ void initState() {
             onTap: () {
               setState(() =>
                 _selectedInterval = iv.$2);
-              _webController.loadRequest(
-                Uri.parse(
-                  _buildChartUrl(iv.$2)));
+              _webController.loadHtmlString(
+                _buildChartHtml(iv.$2));
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 4),
+              padding:
+                const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4),
               decoration: BoxDecoration(
                 color: isSelected
                   ? AppTheme.primaryBlue
@@ -261,122 +499,250 @@ void initState() {
     );
   }
 
-  // ── Fundamental Tab ──────────────────────────────
-  Widget _buildFundamentalTab() {
-  final metrics = context
-    .watch<MetricsProvider>()
-    .getFundamentals(widget.symbol);
-
-  return Stack(
-    children: [
-      metrics.isEmpty
-        ? _buildEmptyMetrics(
-            'No fundamental metrics yet',
-            'Tap + to add metrics like '
-            'P/E, ROCE, ROE, EPS...',
-            Icons.analytics_outlined,
-          )
-        : ListView(
-            padding: const EdgeInsets.fromLTRB(
-              16, 16, 16, 80),
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.bar_chart,
-                    color: AppTheme.primaryBlue,
-                    size: 20,
+  Widget _buildPriceChart() {
+    if (_closingPrices.isEmpty) {
+      return _buildNoData('No price data');
+    }
+    final minY = _closingPrices
+      .reduce((a, b) => a < b ? a : b);
+    final maxY = _closingPrices
+      .reduce((a, b) => a > b ? a : b);
+    final range = maxY - minY;
+    final isPositive =
+      _closingPrices.last >=
+      _closingPrices.first;
+    return LineChart(
+      LineChartData(
+        minY: minY - range * 0.05,
+        maxY: maxY + range * 0.05,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: range / 4,
+          getDrawingHorizontalLine:
+            (value) => FlLine(
+              color: Colors.grey
+                .withOpacity(0.2),
+              strokeWidth: 1,
+            ),
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 60,
+              getTitlesWidget:
+                (value, meta) => Text(
+                  value.toStringAsFixed(0),
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.grey[600],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${metrics.length} Fundamental '
-                    'Metrics',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              GridView.builder(
-                shrinkWrap: true,
-                physics:
-                  const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 1.5,
                 ),
-                itemCount: metrics.length,
-                itemBuilder: (_, i) =>
-                  _buildFundamentalCard(
-                    metrics[i], i),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue
-                    .withOpacity(0.1),
-                  borderRadius:
-                    BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppTheme.primaryBlue
-                      .withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.psychology,
-                      color: AppTheme.primaryBlue,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Go to AI Analysis tab to '
-                        'get insights based on all '
-                        'your metrics',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color:
-                            AppTheme.primaryBlue,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () =>
-                        _tabController
-                          .animateTo(3),
-                      child: const Text('Go →'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
-
-      // + Button at bottom right
-      Positioned(
-        bottom: 16,
-        right: 16,
-        child: FloatingActionButton(
-          heroTag: 'fundamental_fab',
-          onPressed: () =>
-            _showAddFundamentalSheet(context),
-          backgroundColor: AppTheme.primaryBlue,
-          child: const Icon(
-            Icons.add,
-            color: Colors.white,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 22,
+              interval:
+                (_closingPrices.length / 4)
+                  .toDouble(),
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index >= 0 && index < _priceDates.length) {
+                  final date = _priceDates[index];
+                  return Text(
+                    date.length >= 7
+                      ? date.substring(5, 7)
+                      : date,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.grey[600],
+                    ),
+                  );
+                }
+                return const Text('');
+              },
+            ),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: false)),
+        ),
+        borderData:
+          FlBorderData(show: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots: _closingPrices
+              .asMap()
+              .entries
+              .map((e) => FlSpot(
+                e.key.toDouble(),
+                e.value))
+              .toList(),
+            isCurved: true,
+            color: isPositive
+              ? AppTheme.green
+              : AppTheme.red,
+            barWidth: 2,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(
+              show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: isPositive
+                ? AppTheme.green
+                    .withOpacity(0.1)
+                : AppTheme.red
+                    .withOpacity(0.1),
+            ),
+          ),
+        ],
+        lineTouchData: LineTouchData(
+          touchTooltipData:
+            LineTouchTooltipData(
+            getTooltipItems: (spots) =>
+              spots.map((spot) =>
+                LineTooltipItem(
+                  'Rs. ${spot.y.toStringAsFixed(2)}',
+                  const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                  ),
+                )
+              ).toList(),
           ),
         ),
       ),
-    ],
-  );
-}
+    );
+  }
+
+  // ── Fundamental Tab ────────────────────
+  Widget _buildFundamentalTab() {
+    final metrics = context
+      .watch<MetricsProvider>()
+      .getFundamentals(widget.symbol);
+    return Stack(
+      children: [
+        metrics.isEmpty
+          ? _buildEmptyMetrics(
+              'No fundamental metrics yet',
+              'Tap + to add metrics like '
+              'P/E, ROCE, ROE, EPS...',
+              Icons.analytics_outlined,
+            )
+          : ListView(
+              padding:
+                const EdgeInsets.fromLTRB(
+                  16, 16, 16, 80),
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.bar_chart,
+                      color:
+                        AppTheme.primaryBlue,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${metrics.length} '
+                      'Fundamental Metrics',
+                      style: const TextStyle(
+                        fontWeight:
+                          FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics:
+                    const NeverScrollableScrollPhysics(),
+                  gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 1.5,
+                  ),
+                  itemCount: metrics.length,
+                  itemBuilder: (_, i) =>
+                    _buildFundamentalCard(
+                      metrics[i], i),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding:
+                    const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue
+                      .withOpacity(0.1),
+                    borderRadius:
+                      BorderRadius.circular(
+                        10),
+                    border: Border.all(
+                      color:
+                        AppTheme.primaryBlue
+                          .withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.psychology,
+                        color:
+                          AppTheme.primaryBlue,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Go to AI Analysis '
+                          'tab to get insights',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme
+                              .primaryBlue,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                          _tabController
+                            .animateTo(4),
+                        child: const Text(
+                          'Go →'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'fundamental_fab',
+            onPressed: () =>
+              _showAddFundamentalSheet(
+                context),
+            backgroundColor:
+              AppTheme.primaryBlue,
+            child: const Icon(
+              Icons.add,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildFundamentalCard(
       FundamentalMetric metric, int index) {
@@ -395,31 +761,36 @@ void initState() {
             children: [
               Row(
                 mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  MainAxisAlignment
+                    .spaceBetween,
                 children: [
                   Expanded(
                     child: Text(
                       metric.name,
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.grey[600],
+                        color:
+                          Colors.grey[600],
                         fontWeight:
                           FontWeight.w600,
                       ),
                       maxLines: 1,
                       overflow:
-                        TextOverflow.ellipsis,
+                        TextOverflow
+                          .ellipsis,
                     ),
                   ),
                   GestureDetector(
                     onTap: () => context
                       .read<MetricsProvider>()
                       .removeFundamentalMetric(
-                        widget.symbol, index),
+                        widget.symbol,
+                        index),
                     child: Icon(
                       Icons.close,
                       size: 14,
-                      color: Colors.grey[400],
+                      color:
+                        Colors.grey[400],
                     ),
                   ),
                 ],
@@ -433,8 +804,10 @@ void initState() {
                   color: AppTheme.primaryBlue,
                 ),
               ),
-              if (metric.description != null &&
-                  metric.description!.isNotEmpty)
+              if (metric.description !=
+                      null &&
+                  metric.description!
+                      .isNotEmpty)
                 Text(
                   metric.description!,
                   style: TextStyle(
@@ -442,7 +815,8 @@ void initState() {
                     color: Colors.grey[500],
                   ),
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                    TextOverflow.ellipsis,
                 ),
             ],
           ),
@@ -451,115 +825,123 @@ void initState() {
     );
   }
 
-  // ── Technical Tab ────────────────────────────────
+  // ── Technical Tab ──────────────────────
   Widget _buildTechnicalTab() {
-  final metrics = context
-    .watch<MetricsProvider>()
-    .getTechnicals(widget.symbol);
-
-  return Stack(
-    children: [
-      metrics.isEmpty
-        ? _buildEmptyMetrics(
-            'No technical metrics yet',
-            'Tap + to add indicators like '
-            'RSI, MACD, Bollinger Bands...',
-            Icons.show_chart,
-          )
-        : ListView(
-            padding: const EdgeInsets.fromLTRB(
-              16, 16, 16, 80),
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.show_chart,
-                    color: AppTheme.accentBlue,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${metrics.length} Technical '
-                    'Indicators',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ...metrics.asMap().entries.map(
-                (entry) => _buildTechnicalCard(
-                  entry.value, entry.key)),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentBlue
-                    .withOpacity(0.1),
-                  borderRadius:
-                    BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppTheme.accentBlue
-                      .withOpacity(0.2)),
-                ),
-                child: Row(
+    final metrics = context
+      .watch<MetricsProvider>()
+      .getTechnicals(widget.symbol);
+    return Stack(
+      children: [
+        metrics.isEmpty
+          ? _buildEmptyMetrics(
+              'No technical metrics yet',
+              'Tap + to add indicators like '
+              'RSI, MACD, Bollinger Bands...',
+              Icons.show_chart,
+            )
+          : ListView(
+              padding:
+                const EdgeInsets.fromLTRB(
+                  16, 16, 16, 80),
+              children: [
+                Row(
                   children: [
                     const Icon(
-                      Icons.psychology,
-                      color: AppTheme.accentBlue,
-                      size: 18,
+                      Icons.show_chart,
+                      color:
+                        AppTheme.accentBlue,
+                      size: 20,
                     ),
                     const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'AI Analysis uses all your '
-                        'technical indicators for '
-                        'a comprehensive report',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color:
-                            AppTheme.accentBlue,
-                        ),
+                    Text(
+                      '${metrics.length} '
+                      'Technical Indicators',
+                      style: const TextStyle(
+                        fontWeight:
+                          FontWeight.bold,
+                        fontSize: 16,
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () =>
-                        _tabController
-                          .animateTo(3),
-                      child: const Text('Go →'),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-
-      // + Button at bottom right
-      Positioned(
-        bottom: 16,
-        right: 16,
-        child: FloatingActionButton(
-          heroTag: 'technical_fab',
-          onPressed: () =>
-            _showAddTechnicalSheet(context),
-          backgroundColor: AppTheme.accentBlue,
-          child: const Icon(
-            Icons.add,
-            color: Colors.white,
+                const SizedBox(height: 12),
+                ...metrics.asMap().entries
+                  .map((entry) =>
+                    _buildTechnicalCard(
+                      entry.value,
+                      entry.key)),
+                const SizedBox(height: 16),
+                Container(
+                  padding:
+                    const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue
+                      .withOpacity(0.1),
+                    borderRadius:
+                      BorderRadius.circular(
+                        10),
+                    border: Border.all(
+                      color:
+                        AppTheme.accentBlue
+                          .withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.psychology,
+                        color:
+                          AppTheme.accentBlue,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'AI Analysis uses '
+                          'all your technical '
+                          'indicators',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme
+                              .accentBlue,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                          _tabController
+                            .animateTo(4),
+                        child: const Text(
+                          'Go →'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'technical_fab',
+            onPressed: () =>
+              _showAddTechnicalSheet(
+                context),
+            backgroundColor:
+              AppTheme.accentBlue,
+            child: const Icon(
+              Icons.add,
+              color: Colors.white,
+            ),
           ),
         ),
-      ),
-    ],
-  );
-}
+      ],
+    );
+  }
 
   Widget _buildTechnicalCard(
       TechnicalMetric metric, int index) {
     Color signalColor = Colors.grey;
     IconData signalIcon = Icons.remove;
-
     if (metric.signal != null) {
       final sig =
         metric.signal!.toLowerCase();
@@ -582,9 +964,9 @@ void initState() {
         signalIcon = Icons.remove;
       }
     }
-
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(
+        bottom: 10),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
@@ -613,7 +995,8 @@ void initState() {
                   Text(
                     metric.name,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                        FontWeight.bold,
                       fontSize: 14,
                     ),
                   ),
@@ -634,14 +1017,16 @@ void initState() {
                 if (metric.signal != null)
                   Container(
                     padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                        .symmetric(
                         horizontal: 8,
                         vertical: 4),
                     decoration: BoxDecoration(
                       color: signalColor
                         .withOpacity(0.1),
                       borderRadius:
-                        BorderRadius.circular(20),
+                        BorderRadius.circular(
+                          20),
                     ),
                     child: Text(
                       metric.signal!,
@@ -673,7 +1058,45 @@ void initState() {
     );
   }
 
-  // ── AI Analysis Tab ──────────────────────────────
+  // ── Financials Tab ─────────────────────
+ Widget _buildFinancialsTab() {
+  return Column(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(12),
+        color: AppTheme.primaryBlue
+          .withOpacity(0.1),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 16,
+              color: AppTheme.primaryBlue,
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Financial data from '
+                'Screener.in',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      Expanded(
+        child: WebViewWidget(
+          controller:
+            _screenerController),
+      ),
+    ],
+  );
+}
+
+  // ── AI Analysis Tab ────────────────────
   Widget _buildAiTab() {
     final fundamentals = context
       .read<MetricsProvider>()
@@ -681,8 +1104,8 @@ void initState() {
     final technicals = context
       .read<MetricsProvider>()
       .getTechnicals(widget.symbol);
-    final total =
-      fundamentals.length + technicals.length;
+    final total = fundamentals.length +
+      technicals.length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -690,11 +1113,10 @@ void initState() {
         crossAxisAlignment:
           CrossAxisAlignment.start,
         children: [
-
-          // Metrics summary card
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding:
+                const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment:
                   CrossAxisAlignment.start,
@@ -703,7 +1125,8 @@ void initState() {
                     children: [
                       const Icon(
                         Icons.psychology,
-                        color: AppTheme.primaryBlue,
+                        color:
+                          AppTheme.primaryBlue,
                       ),
                       const SizedBox(width: 8),
                       const Text(
@@ -739,22 +1162,22 @@ void initState() {
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   if (total == 0)
                     Container(
                       padding:
-                        const EdgeInsets.all(12),
+                        const EdgeInsets
+                          .all(12),
                       decoration: BoxDecoration(
                         color: Colors.orange
                           .withOpacity(0.1),
                         borderRadius:
-                          BorderRadius.circular(8),
+                          BorderRadius
+                            .circular(8),
                       ),
                       child: const Text(
-                        'Add metrics in Fundamental '
-                        'and Technical tabs first, '
-                        'then AI will analyse all '
-                        'of them together.',
+                        'Add metrics in '
+                        'Fundamental and '
+                        'Technical tabs first.',
                         style: TextStyle(
                           color: Colors.orange,
                           fontSize: 13,
@@ -764,20 +1187,24 @@ void initState() {
                   else
                     Column(
                       crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        CrossAxisAlignment
+                          .start,
                       children: [
                         Text(
-                          'Ready to analyse $total '
-                          'metrics for '
+                          'Ready to analyse '
+                          '$total metrics for '
                           '${widget.symbol}',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color:
+                              Colors.grey[600],
                             fontSize: 13,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12),
                         ElevatedButton.icon(
-                          onPressed: _isAiLoading
+                          onPressed:
+                            _isAiLoading
                             ? null
                             : () =>
                                 _runAiAnalysis(
@@ -789,17 +1216,21 @@ void initState() {
                                 height: 16,
                                 child:
                                   CircularProgressIndicator(
-                                    strokeWidth: 2,
+                                    strokeWidth:
+                                      2,
                                     color:
-                                      Colors.white,
+                                      Colors
+                                        .white,
                                   ),
                               )
                             : const Icon(
-                                Icons.auto_awesome),
+                                Icons
+                                  .auto_awesome),
                           label: Text(
                             _isAiLoading
-                              ? 'Analysing $total metrics...'
-                              : 'Analyse All $total Metrics',
+                              ? 'Analysing...'
+                              : 'Analyse All '
+                                '$total Metrics',
                           ),
                         ),
                       ],
@@ -808,45 +1239,34 @@ void initState() {
               ),
             ),
           ),
-
-          // AI Score
           if (_aiScore > 0) ...[
             const SizedBox(height: 16),
             _buildScoreCard(),
           ],
-
-          // AI Result
           if (_aiAnalysis != null) ...[
             const SizedBox(height: 16),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding:
+                  const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment:
                     CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    const Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.auto_awesome,
                           color: AppTheme.gold,
                           size: 18,
                         ),
-                        const SizedBox(width: 8),
-                        const Text(
+                        SizedBox(width: 8),
+                        Text(
                           'AI Analysis Report',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight:
                               FontWeight.bold,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '$total metrics analysed',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
                           ),
                         ),
                       ],
@@ -862,16 +1282,19 @@ void initState() {
                     const SizedBox(height: 16),
                     Container(
                       padding:
-                        const EdgeInsets.all(10),
+                        const EdgeInsets
+                          .all(10),
                       decoration: BoxDecoration(
                         color: Colors.orange
                           .withOpacity(0.1),
                         borderRadius:
-                          BorderRadius.circular(8),
+                          BorderRadius
+                            .circular(8),
                       ),
                       child: const Text(
-                        'For educational purposes '
-                        'only. Not financial advice.',
+                        'For educational '
+                        'purposes only. '
+                        'Not financial advice.',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.orange,
@@ -883,88 +1306,21 @@ void initState() {
               ),
             ),
           ],
-
-          // What metrics are being analysed
-          if (total > 0 &&
-              _aiAnalysis == null) ...[
-            const SizedBox(height: 16),
-            const Text(
-              'Metrics ready for analysis:',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (fundamentals.isNotEmpty) ...[
-              Text(
-                'Fundamental (${fundamentals.length})',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: fundamentals.map((m) =>
-                  Chip(
-                    label: Text(
-                      '${m.name}: ${m.value}',
-                      style: const TextStyle(
-                        fontSize: 11),
-                    ),
-                    backgroundColor:
-                      AppTheme.primaryBlue
-                        .withOpacity(0.1),
-                  )
-                ).toList(),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (technicals.isNotEmpty) ...[
-              Text(
-                'Technical (${technicals.length})',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: technicals.map((m) =>
-                  Chip(
-                    label: Text(
-                      '${m.name}: ${m.value}',
-                      style: const TextStyle(
-                        fontSize: 11),
-                    ),
-                    backgroundColor:
-                      AppTheme.accentBlue
-                        .withOpacity(0.1),
-                  )
-                ).toList(),
-              ),
-            ],
-          ],
         ],
       ),
     );
   }
 
   Widget _metricCountChip(
-      String count, String label, Color color) {
+      String count, String label,
+      Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius:
+          BorderRadius.circular(10),
         border: Border.all(
           color: color.withOpacity(0.3)),
       ),
@@ -994,7 +1350,6 @@ void initState() {
     String recommendation;
     Color scoreColor;
     IconData scoreIcon;
-
     if (_aiScore >= 75) {
       recommendation = 'Strong Buy';
       scoreColor = AppTheme.green;
@@ -1016,13 +1371,11 @@ void initState() {
       scoreColor = AppTheme.red;
       scoreIcon = Icons.thumb_down;
     }
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // Score circle
             SizedBox(
               width: 80,
               height: 80,
@@ -1032,9 +1385,8 @@ void initState() {
                   CircularProgressIndicator(
                     value: _aiScore / 100,
                     strokeWidth: 8,
-                    backgroundColor:
-                      Colors.grey.withOpacity(
-                        0.2),
+                    backgroundColor: Colors
+                      .grey.withOpacity(0.2),
                     valueColor:
                       AlwaysStoppedAnimation(
                         scoreColor),
@@ -1043,7 +1395,8 @@ void initState() {
                     '$_aiScore',
                     style: TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                        FontWeight.bold,
                       color: scoreColor,
                     ),
                   ),
@@ -1068,11 +1421,11 @@ void initState() {
                     recommendation,
                     style: TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                        FontWeight.bold,
                       color: scoreColor,
                     ),
                   ),
-                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Icon(
@@ -1082,10 +1435,11 @@ void initState() {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Based on ${context.read<MetricsProvider>().totalMetrics(widget.symbol)} metrics',
+                        'Based on $_aiScore/100',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.grey[600],
+                          color:
+                            Colors.grey[600],
                         ),
                       ),
                     ],
@@ -1099,7 +1453,6 @@ void initState() {
     );
   }
 
-  // ── AI Analysis Runner ───────────────────────────
   Future<void> _runAiAnalysis(
       List<FundamentalMetric> fundamentals,
       List<TechnicalMetric> technicals) async {
@@ -1108,70 +1461,40 @@ void initState() {
       _aiAnalysis = null;
       _aiScore = 0;
     });
-
     try {
-      // Build the comprehensive prompt
       final fundStr = fundamentals.map((m) =>
         '${m.name}: ${m.value}'
-        '${m.description != null && m.description!.isNotEmpty ? ' (${m.description})' : ''}'
       ).join('\n');
-
       final techStr = technicals.map((m) =>
         '${m.name}: ${m.value}'
-        '${m.signal != null && m.signal!.isNotEmpty ? ' — Signal: ${m.signal}' : ''}'
+        '${m.signal != null ? ' — ${m.signal}' : ''}'
       ).join('\n');
-
       final prompt = '''
-You are StockSense AI, an expert financial analyst. 
-Analyse the stock ${widget.symbol} (${widget.companyName}) based on the following user-defined metrics:
+You are StockSense AI, an expert financial analyst.
+Analyse the stock ${widget.symbol} (${widget.companyName}) based on these user-defined metrics:
 
-FUNDAMENTAL ANALYSIS METRICS (${fundamentals.length} metrics):
+FUNDAMENTAL ANALYSIS (${fundamentals.length} metrics):
 $fundStr
 
-TECHNICAL ANALYSIS METRICS (${technicals.length} metrics):
+TECHNICAL ANALYSIS (${technicals.length} metrics):
 $techStr
 
-Total metrics being analysed: ${fundamentals.length + technicals.length}
+Total: ${fundamentals.length + technicals.length} metrics
 
-Please provide:
-
-1. FUNDAMENTAL ANALYSIS SUMMARY
-   - Evaluate each fundamental metric provided
-   - Identify strengths and weaknesses
-   - Compare to industry standards where possible
-
-2. TECHNICAL ANALYSIS SUMMARY  
-   - Evaluate each technical indicator provided
-   - Identify current trend and momentum
-   - Note any conflicting signals
-
+Provide:
+1. FUNDAMENTAL SUMMARY
+2. TECHNICAL SUMMARY
 3. COMBINED ANALYSIS
-   - How do fundamental and technical metrics align?
-   - Are there any conflicts between the two?
-
 4. RISK ASSESSMENT
-   - Key risks based on the metrics provided
-   - Red flags if any
+5. FINAL RECOMMENDATION (Buy/Hold/Sell)
+6. SCORE: XX/100 (format exactly like this)
 
-5. FINAL RECOMMENDATION
-   - Clear Buy / Hold / Sell suggestion
-   - Confidence level (High/Medium/Low)
-   - Key reasons for the recommendation
-
-6. SCORE: X/100
-   - Give a single score out of 100 at the very end
-   - Format exactly as: SCORE: XX/100
-   - 75-100 = Strong Buy, 55-74 = Buy/Hold, 40-54 = Hold, 25-39 = Sell/Hold, 0-24 = Strong Sell
-
-Note: This analysis is based only on the metrics the user has provided. More metrics = better analysis.
+Not financial advice. Educational only.
 ''';
-
-      final response = await _api.askGeneral(
-        prompt);
+      final response =
+        await _api.askGeneral(prompt);
       final analysisText =
         response['analysis'] ?? '';
-
-      // Extract score from response
       int score = 50;
       final scoreMatch = RegExp(
         r'SCORE:\s*(\d+)/100',
@@ -1179,33 +1502,30 @@ Note: This analysis is based only on the metrics the user has provided. More met
       ).firstMatch(analysisText);
       if (scoreMatch != null) {
         score = int.tryParse(
-          scoreMatch.group(1) ?? '50') ?? 50;
+          scoreMatch.group(1) ?? '50'
+        ) ?? 50;
       }
-
       setState(() {
         _aiAnalysis = analysisText;
         _aiScore = score.clamp(0, 100);
         _isAiLoading = false;
       });
-
     } catch (e) {
       setState(() {
         _aiAnalysis =
-          'AI analysis failed. Please check '
-          'your connection and try again.';
+          'AI analysis failed. '
+          'Check connection and try again.';
         _isAiLoading = false;
       });
     }
   }
 
-  // ── Add Fundamental Sheet ────────────────────────
+  // ── Add Fundamental Sheet ──────────────
   void _showAddFundamentalSheet(
       BuildContext context) {
     final nameCtrl = TextEditingController();
     final valueCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-
-    // Suggested metrics
     final suggestions = [
       'P/E Ratio', 'P/B Ratio', 'EPS',
       'ROCE', 'ROE', 'ROA',
@@ -1216,7 +1536,6 @@ Note: This analysis is based only on the metrics the user has provided. More met
       '52W High', '52W Low',
       'Face Value', 'Promoter Holding %',
     ];
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1243,30 +1562,24 @@ Note: This analysis is based only on the metrics the user has provided. More met
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Add any metric you want to track',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 13,
-                ),
-              ),
               const SizedBox(height: 16),
-
-              // Suggestions
               SizedBox(
                 height: 36,
                 child: ListView.separated(
                   scrollDirection:
                     Axis.horizontal,
-                  itemCount: suggestions.length,
-                  separatorBuilder: (_, __) =>
-                    const SizedBox(width: 8),
+                  itemCount:
+                    suggestions.length,
+                  separatorBuilder:
+                    (_, __) =>
+                      const SizedBox(
+                        width: 8),
                   itemBuilder: (_, i) =>
                     ActionChip(
                       label: Text(
                         suggestions[i],
-                        style: const TextStyle(
+                        style:
+                          const TextStyle(
                           fontSize: 12),
                       ),
                       onPressed: () =>
@@ -1277,45 +1590,41 @@ Note: This analysis is based only on the metrics the user has provided. More met
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Metric name
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(
+                decoration:
+                  const InputDecoration(
                   labelText: 'Metric Name',
-                  hintText: 'e.g. P/E Ratio, ROCE',
+                  hintText:
+                    'e.g. P/E Ratio, ROCE',
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Value
               TextField(
                 controller: valueCtrl,
-                decoration: const InputDecoration(
+                decoration:
+                  const InputDecoration(
                   labelText: 'Value',
-                  hintText: 'e.g. 28.4, 18%, 2.3x',
+                  hintText:
+                    'e.g. 28.4, 18%, 2.3x',
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Description (optional)
               TextField(
                 controller: descCtrl,
-                decoration: const InputDecoration(
+                decoration:
+                  const InputDecoration(
                   labelText:
                     'Description (optional)',
-                  hintText:
-                    'e.g. Good, Above average...',
                 ),
               ),
               const SizedBox(height: 20),
-
               ElevatedButton(
                 onPressed: () {
-                  if (nameCtrl.text.isEmpty ||
-                      valueCtrl.text.isEmpty) {
+                  if (nameCtrl.text.isEmpty
+                      || valueCtrl
+                          .text.isEmpty)
                     return;
-                  }
                   context
                     .read<MetricsProvider>()
                     .addFundamentalMetric(
@@ -1324,170 +1633,16 @@ Note: This analysis is based only on the metrics the user has provided. More met
                         name: nameCtrl.text,
                         value: valueCtrl.text,
                         description:
-                          descCtrl.text.isEmpty
-                            ? null
-                            : descCtrl.text,
+                          descCtrl.text
+                            .isEmpty
+                          ? null
+                          : descCtrl.text,
                       ),
                     );
                   Navigator.pop(ctx);
                 },
                 child: const Text(
                   'Add Metric'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Add Technical Sheet ──────────────────────────
-  void _showAddTechnicalSheet(
-      BuildContext context) {
-    final nameCtrl = TextEditingController();
-    final valueCtrl = TextEditingController();
-    String signal = 'Neutral';
-
-    final suggestions = [
-      'RSI (14)', 'MACD', 'MACD Signal',
-      'Bollinger Bands', 'SMA 50', 'SMA 200',
-      'EMA 20', 'EMA 50',
-      'Fibonacci 0.618', 'Fibonacci 0.382',
-      'Volume', 'OBV',
-      'Stochastic', 'ADX',
-      'ATR', 'CCI',
-      'Pivot Point', 'Support Level',
-      'Resistance Level',
-    ];
-
-    final signals = [
-      'Bullish', 'Bearish', 'Neutral',
-      'Overbought', 'Oversold',
-      'Buy', 'Sell', 'Hold',
-      'Above SMA', 'Below SMA',
-      'Golden Cross', 'Death Cross',
-      'Breakout', 'Breakdown',
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(20)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx)
-              .viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment:
-              CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Add Technical Indicator',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Add any indicator with its value '
-                'and signal',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Suggestions
-              SizedBox(
-                height: 36,
-                child: ListView.separated(
-                  scrollDirection:
-                    Axis.horizontal,
-                  itemCount: suggestions.length,
-                  separatorBuilder: (_, __) =>
-                    const SizedBox(width: 8),
-                  itemBuilder: (_, i) =>
-                    ActionChip(
-                      label: Text(
-                        suggestions[i],
-                        style: const TextStyle(
-                          fontSize: 12),
-                      ),
-                      onPressed: () =>
-                        setSheet(() =>
-                          nameCtrl.text =
-                            suggestions[i]),
-                    ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Indicator name
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Indicator Name',
-                  hintText: 'e.g. RSI (14), MACD',
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Value
-              TextField(
-                controller: valueCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Value',
-                  hintText: 'e.g. 58.4, 12.3',
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Signal dropdown
-              DropdownButtonFormField<String>(
-                value: signal,
-                decoration: const InputDecoration(
-                  labelText: 'Signal',
-                ),
-                items: signals.map((s) =>
-                  DropdownMenuItem(
-                    value: s,
-                    child: Text(s),
-                  )
-                ).toList(),
-                onChanged: (v) =>
-                  setSheet(() => signal = v!),
-              ),
-              const SizedBox(height: 20),
-
-              ElevatedButton(
-                onPressed: () {
-                  if (nameCtrl.text.isEmpty ||
-                      valueCtrl.text.isEmpty) {
-                    return;
-                  }
-                  context
-                    .read<MetricsProvider>()
-                    .addTechnicalMetric(
-                      widget.symbol,
-                      TechnicalMetric(
-                        name: nameCtrl.text,
-                        value: valueCtrl.text,
-                        signal: signal,
-                      ),
-                    );
-                  Navigator.pop(ctx);
-                },
-                child: const Text(
-                  'Add Indicator'),
               ),
             ],
           ),
@@ -1506,7 +1661,6 @@ Note: This analysis is based only on the metrics the user has provided. More met
       text: metric.value);
     final descCtrl = TextEditingController(
       text: metric.description ?? '');
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1533,19 +1687,22 @@ Note: This analysis is based only on the metrics the user has provided. More met
             const SizedBox(height: 16),
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(
+              decoration:
+                const InputDecoration(
                 labelText: 'Metric Name'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: valueCtrl,
-              decoration: const InputDecoration(
+              decoration:
+                const InputDecoration(
                 labelText: 'Value'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: descCtrl,
-              decoration: const InputDecoration(
+              decoration:
+                const InputDecoration(
                 labelText: 'Description'),
             ),
             const SizedBox(height: 20),
@@ -1560,8 +1717,8 @@ Note: This analysis is based only on the metrics the user has provided. More met
                       value: valueCtrl.text,
                       description:
                         descCtrl.text.isEmpty
-                          ? null
-                          : descCtrl.text,
+                        ? null
+                        : descCtrl.text,
                     ),
                   );
                 Navigator.pop(ctx);
@@ -1574,6 +1731,150 @@ Note: This analysis is based only on the metrics the user has provided. More met
     );
   }
 
+  // ── Add Technical Sheet ────────────────
+  void _showAddTechnicalSheet(
+      BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final valueCtrl = TextEditingController();
+    String signal = 'Neutral';
+    final suggestions = [
+      'RSI (14)', 'MACD', 'MACD Signal',
+      'Bollinger Bands', 'SMA 50',
+      'SMA 200', 'EMA 20', 'EMA 50',
+      'Fibonacci 0.618', 'Fibonacci 0.382',
+      'Volume', 'OBV', 'Stochastic',
+      'ADX', 'ATR', 'CCI',
+      'Pivot Point', 'Support Level',
+      'Resistance Level',
+    ];
+    final signals = [
+      'Bullish', 'Bearish', 'Neutral',
+      'Overbought', 'Oversold',
+      'Buy', 'Sell', 'Hold',
+      'Above SMA', 'Below SMA',
+      'Golden Cross', 'Death Cross',
+      'Breakout', 'Breakdown',
+    ];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(ctx)
+              .viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment:
+              CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Add Technical Indicator',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 36,
+                child: ListView.separated(
+                  scrollDirection:
+                    Axis.horizontal,
+                  itemCount:
+                    suggestions.length,
+                  separatorBuilder:
+                    (_, __) =>
+                      const SizedBox(
+                        width: 8),
+                  itemBuilder: (_, i) =>
+                    ActionChip(
+                      label: Text(
+                        suggestions[i],
+                        style:
+                          const TextStyle(
+                          fontSize: 12),
+                      ),
+                      onPressed: () =>
+                        setSheet(() =>
+                          nameCtrl.text =
+                            suggestions[i]),
+                    ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameCtrl,
+                decoration:
+                  const InputDecoration(
+                  labelText:
+                    'Indicator Name',
+                  hintText:
+                    'e.g. RSI (14), MACD',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: valueCtrl,
+                decoration:
+                  const InputDecoration(
+                  labelText: 'Value',
+                  hintText: 'e.g. 58.4',
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: signal,
+                decoration:
+                  const InputDecoration(
+                  labelText: 'Signal',
+                ),
+                items: signals.map((s) =>
+                  DropdownMenuItem(
+                    value: s,
+                    child: Text(s),
+                  )
+                ).toList(),
+                onChanged: (v) =>
+                  setSheet(
+                    () => signal = v!),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  if (nameCtrl.text.isEmpty
+                      || valueCtrl
+                          .text.isEmpty)
+                    return;
+                  context
+                    .read<MetricsProvider>()
+                    .addTechnicalMetric(
+                      widget.symbol,
+                      TechnicalMetric(
+                        name: nameCtrl.text,
+                        value: valueCtrl.text,
+                        signal: signal,
+                      ),
+                    );
+                  Navigator.pop(ctx);
+                },
+                child: const Text(
+                  'Add Indicator'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Helpers ────────────────────────────
   Widget _buildEmptyMetrics(
       String title, String subtitle,
       IconData icon) {
@@ -1612,28 +1913,25 @@ Note: This analysis is based only on the metrics the user has provided. More met
     );
   }
 
-  double _livePrice = 0;
-double _liveChange = 0;
-double _liveChangePct = 0;
-
-Future<void> _loadLivePrice() async {
-  try {
-    final quote = await _api.getStockQuote(
-      widget.symbol);
-    setState(() {
-      _livePrice = double.tryParse(
-        quote['price']?.toString() ?? '0'
-      ) ?? 0;
-      _liveChange = double.tryParse(
-        quote['change']?.toString() ?? '0'
-      ) ?? 0;
-      _liveChangePct = double.tryParse(
-        quote['changePercent']?.toString()
-        ?? '0') ?? 0;
-    });
-  } catch (e) {
-    // silent fail
+  Widget _buildNoData(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment:
+          MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 48,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: TextStyle(
+              color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
   }
-}
- 
 }
