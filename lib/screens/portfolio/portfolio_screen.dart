@@ -26,23 +26,26 @@ class _PortfolioScreenState
   String? _error;
   Map<String, double> _livePrices = {};
   Map<String, double> _liveChangePct = {};
+  final Set<String> _sentAlerts = {};
 
   @override
-void initState() {
-  super.initState();
-  _loadHoldings();
-  // Auto refresh every 30 seconds
-  _refreshTimer = Timer.periodic(
-    const Duration(seconds: 30),
-    (_) => _loadLivePrices(),
-  );
-}
+    void initState() {
+      super.initState();
+      _loadHoldings();
+      // Check prices every 30 seconds
+      _refreshTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) {
+          if (mounted) _loadLivePrices();
+        },
+      );
+    }
 
 @override
-void dispose() {
-  _refreshTimer?.cancel();
-  super.dispose();
-}
+    void dispose() {
+      _refreshTimer?.cancel();
+      super.dispose();
+    }
 
   ApiService get _api {
     final token =
@@ -89,8 +92,10 @@ void dispose() {
   for (var holding in _holdings) {
     try {
       final symbol =
-        holding['symbol']?.toString() ?? '';
+        holding['symbol']
+          ?.toString() ?? '';
       if (symbol.isEmpty) continue;
+
       final quote =
         await _api.getStockQuote(symbol);
       final price = double.tryParse(
@@ -99,43 +104,45 @@ void dispose() {
       final changePct = double.tryParse(
         quote['changePercent']
           ?.toString() ?? '0') ?? 0;
+
       if (price > 0 && mounted) {
         setState(() {
           _livePrices[symbol] = price;
-          _liveChangePct[symbol] = changePct;
+          _liveChangePct[symbol] =
+            changePct;
         });
 
-        // Check stop loss
+        // Check stop loss alert
         final stopLoss = double.tryParse(
           holding['stopLoss']
             ?.toString() ?? '0') ?? 0;
+        final slKey = '$symbol\_SL';
         if (stopLoss > 0 &&
-            price <= stopLoss) {
-          await AlertService.showAlert(
-            title:
-              '⚠️ Stop Loss Hit — $symbol',
-            body:
-              '$symbol has fallen to '
-              'Rs. ${price.toStringAsFixed(2)}, '
-              'below your stop loss of '
-              'Rs. ${stopLoss.toStringAsFixed(2)}',
+            price <= stopLoss &&
+            !_sentAlerts.contains(slKey)) {
+          _sentAlerts.add(slKey);
+          await AlertService.showStockAlert(
+            symbol: symbol,
+            alertType: 'STOPLOSS',
+            triggerPrice: stopLoss,
+            currentPrice: price,
           );
         }
 
-        // Check target price
-        final targetPrice = double.tryParse(
+        // Check target price alert
+        final target = double.tryParse(
           holding['targetPrice']
             ?.toString() ?? '0') ?? 0;
-        if (targetPrice > 0 &&
-            price >= targetPrice) {
-          await AlertService.showAlert(
-            title:
-              '🎯 Target Hit — $symbol',
-            body:
-              '$symbol has reached '
-              'Rs. ${price.toStringAsFixed(2)}, '
-              'your target of '
-              'Rs. ${targetPrice.toStringAsFixed(2)}',
+        final tpKey = '$symbol\_TP';
+        if (target > 0 &&
+            price >= target &&
+            !_sentAlerts.contains(tpKey)) {
+          _sentAlerts.add(tpKey);
+          await AlertService.showStockAlert(
+            symbol: symbol,
+            alertType: 'TARGET',
+            triggerPrice: target,
+            currentPrice: price,
           );
         }
       }

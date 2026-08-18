@@ -9,6 +9,7 @@ import '../../providers/metrics_provider.dart';
 import '../../models/stock_metrics.dart';
 import '../../services/api_service.dart';
 import '../../config/app_theme.dart';
+import 'dart:async';
 
 class AnalysisScreen extends StatefulWidget {
   final String symbol;
@@ -79,88 +80,144 @@ class _AnalysisScreenState
   }
 
   void _initWebView() {
-    _webController = WebViewController()
-      ..setJavaScriptMode(
-        JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            if (request.url.contains(
-                'tradingview.com/chart/') ||
-                request.url.contains(
-                'tradingview.com/mobile')) {
-              return NavigationDecision
-                .prevent;
-            }
+  _webController = WebViewController()
+    ..setJavaScriptMode(
+      JavaScriptMode.unrestricted)
+    ..setUserAgent(
+      'Mozilla/5.0 (Linux; Android 11; '
+      'Pixel 5) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) '
+      'Chrome/90.0.4430.91 '
+      'Mobile Safari/537.36')
+    ..setNavigationDelegate(
+      NavigationDelegate(
+        onNavigationRequest: (request) {
+          final url = request.url;
+          // Block app store and
+          // tradingview app links
+          if (url.contains('intent://') ||
+              url.contains('market://') ||
+              url.contains('play.google') ||
+              url.contains(
+                'tradingview.com/chart') ||
+              url.contains(
+                'tradingview.com/mobile') ||
+              url.startsWith('intent')) {
             return NavigationDecision
-              .navigate;
-          },
-        ),
-      )
-      ..loadHtmlString(
-        _buildChartHtml(_selectedInterval));
-  }
+              .prevent;
+          }
+          return NavigationDecision
+            .navigate;
+        },
+      ),
+    )
+    ..loadHtmlString(
+      _buildChartHtml(_selectedInterval));
+}
 
-  String _buildChartHtml(String interval) {
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" 
-  content="width=device-width, 
-  initial-scale=1.0, 
-  maximum-scale=1.0">
-<style>
-* { margin: 0; padding: 0; 
-  box-sizing: border-box; }
-body { 
-  background: #131722; 
-  overflow: hidden; 
-  height: 100vh;
-  width: 100vw;
+ String _buildChartHtml(String interval) {
+  return '''
+      <!DOCTYPE html>
+      <html>
+      <head>
+      <meta charset="utf-8">
+      <meta name="viewport" 
+        content="width=device-width, 
+        initial-scale=1.0, 
+        maximum-scale=1.0,
+        user-scalable=no">
+      <style>
+      * { margin: 0; padding: 0; 
+        box-sizing: border-box; }
+      body { 
+        background: #131722; 
+        overflow: hidden; 
+        height: 100vh;
+        width: 100vw;
+      }
+      #chart_container { 
+        width: 100%; 
+        height: 100vh; 
+      }
+      /* Hide TradingView branding 
+        and popup buttons */
+      .tv-header__logo,
+      .tv-circle-logo,
+      [class*="tv-app-open"],
+      [class*="open-app"],
+      [class*="mobile-app"] {
+        display: none !important;
+        visibility: hidden !important;
+      }
+      </style>
+      </head>
+      <body>
+      <div id="chart_container"></div>
+      <script 
+        type="text/javascript" 
+        src="https://s3.tradingview.com/tv.js">
+      </script>
+      <script type="text/javascript">
+      document.addEventListener(
+        'DOMContentLoaded', function() {
+
+        new TradingView.widget({
+          "width": "100%",
+          "height": "100%",
+          "symbol": "NSE:${widget.symbol}",
+          "interval": "$interval",
+          "timezone": "Asia/Kolkata",
+          "theme": "dark",
+          "style": "1",
+          "locale": "en",
+          "toolbar_bg": "#131722",
+          "enable_publishing": false,
+          "allow_symbol_change": false,
+          "save_image": false,
+          "hide_top_toolbar": false,
+          "hide_legend": false,
+          "withdateranges": true,
+          "hide_side_toolbar": false,
+          "details": true,
+          "hotlist": false,
+          "calendar": false,
+          "show_popup_button": false,
+          "popup_width": "0",
+          "popup_height": "0",
+          "no_referral_id": true,
+          "container_id": "chart_container",
+          "overrides": {
+            "paneProperties.background": "#131722",
+            "paneProperties.vertGridProperties.color": "#1e222d",
+            "paneProperties.horzGridProperties.color": "#1e222d"
+          }
+        });
+
+        // Block any popup or app open attempts
+        document.addEventListener('click', 
+          function(e) {
+          var el = e.target;
+          while (el) {
+            var href = el.getAttribute &&
+              el.getAttribute('href');
+            if (href && (
+              href.includes('intent://') ||
+              href.includes('market://') ||
+              href.includes('play.google') ||
+              href.includes('/mobile'))) {
+              e.preventDefault();
+              e.stopPropagation();
+              return false;
+            }
+            el = el.parentElement;
+          }
+        }, true);
+      });
+      </script>
+      </body>
+      </html>
+      ''';
 }
-#chart { 
-  width: 100%; 
-  height: 100vh; 
-}
-</style>
-</head>
-<body>
-<div id="chart"></div>
-<script 
-  type="text/javascript" 
-  src="https://s3.tradingview.com/tv.js">
-</script>
-<script type="text/javascript">
-new TradingView.widget({
-  "autosize": true,
-  "symbol": "NSE:${widget.symbol}",
-  "interval": "$interval",
-  "timezone": "Asia/Kolkata",
-  "theme": "dark",
-  "style": "1",
-  "locale": "en",
-  "toolbar_bg": "#131722",
-  "enable_publishing": false,
-  "withdateranges": true,
-  "hide_side_toolbar": false,
-  "allow_symbol_change": false,
-  "save_image": false,
-  "container_id": "chart",
-  "hide_popup_button": true,
-  "show_popup_button": false,
-  "no_referral_id": true,
-  "studies": [],
-  "show_popup_button": false,
-  "popup_width": "0",
-  "popup_height": "0"
-});
-</script>
-</body>
-</html>
-''';
-  }
 
   Future<void> _loadLivePrice() async {
     try {
@@ -183,15 +240,52 @@ new TradingView.widget({
   }
 
   Future<void> _loadPriceHistory() async {
+  setState(() => _isPriceLoading = true);
   try {
-    final token =
-      context.read<AuthProvider>().token;
-    final api = ApiService(token: token);
-    final quote = await api
-      .getStockQuote(widget.symbol);
+    final response = await http.get(
+      Uri.parse(
+        'http://10.0.2.2:5000/stock/'
+        '${widget.symbol}/history'
+        '?period=3mo'),
+    ).timeout(
+      const Duration(seconds: 15));
 
-    // Build a simple price line from
-    // available data
+    if (response.statusCode == 200) {
+      final data =
+        jsonDecode(response.body);
+      if (data is List &&
+          data.isNotEmpty) {
+        final prices = data
+          .map((d) => double.tryParse(
+            d['close']?.toString()
+            ?? '0') ?? 0.0)
+          .where((p) => p > 0)
+          .toList();
+        final dates = data
+          .map((d) =>
+            d['date']?.toString() ?? '')
+          .toList();
+        if (mounted) {
+          setState(() {
+            _closingPrices = prices;
+            _priceDates = dates;
+            _isPriceLoading = false;
+          });
+          return;
+        }
+      }
+    }
+    // Fallback to quote data
+    _loadChartFromQuote();
+  } catch (e) {
+    _loadChartFromQuote();
+  }
+}
+
+Future<void> _loadChartFromQuote() async {
+  try {
+    final quote = await _api
+      .getStockQuote(widget.symbol);
     final price = double.tryParse(
       quote['price']?.toString() ?? '0'
     ) ?? 0;
@@ -201,30 +295,22 @@ new TradingView.widget({
     final low = double.tryParse(
       quote['low']?.toString() ?? '0'
     ) ?? 0;
-    final prevClose = double.tryParse(
+    final prev = double.tryParse(
       quote['previousClose']
-        ?.toString() ?? '0'
-    ) ?? 0;
+        ?.toString() ?? '0') ?? 0;
     final open = double.tryParse(
       quote['open']?.toString() ?? '0'
     ) ?? 0;
 
-    if (price > 0) {
+    if (price > 0 && mounted) {
       setState(() {
-        // Show today's price movement
         _closingPrices = [
-          prevClose,
-          open,
-          low,
-          high,
-          price,
+          prev, open, low,
+          high, price
         ].where((p) => p > 0).toList();
         _priceDates = [
-          'Prev',
-          'Open',
-          'Low',
-          'High',
-          'Current',
+          'Prev', 'Open', 'Low',
+          'High', 'Now'
         ];
         _isPriceLoading = false;
       });
@@ -342,162 +428,155 @@ new TradingView.widget({
 
 
   // ── Chart Tab ──────────────────────────
-  Widget _buildChartTab() {
-    return Column(
-      children: [
-        _buildIntervalSelector(),
-        const SizedBox(height: 8),
-        if (_livePrice > 0)
-          Container(
-            padding:
-              const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8),
-            color: Theme.of(context)
-              .cardTheme.color,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                      CrossAxisAlignment
-                        .start,
-                    children: [
-                      Text(
-                        widget.symbol,
-                        style:
-                          const TextStyle(
-                          fontWeight:
-                            FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        widget.companyName,
-                        style: TextStyle(
-                          color:
-                            Colors.grey[600],
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
+ Widget _buildChartTab() {
+  return Column(
+    children: [
+      // Live price header
+      if (_livePrice > 0)
+        Container(
+          padding:
+            const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10),
+          color: Theme.of(context)
+            .cardTheme.color,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment:
-                    CrossAxisAlignment.end,
+                    CrossAxisAlignment
+                      .start,
                   children: [
                     Text(
-                      'Rs. ${_livePrice.toStringAsFixed(2)}',
+                      widget.symbol,
                       style:
                         const TextStyle(
-                        fontSize: 22,
                         fontWeight:
                           FontWeight.bold,
+                        fontSize: 18,
                       ),
                     ),
-                    Row(
-                      children: [
-                        Icon(
+                    Text(
+                      widget.companyName,
+                      style: TextStyle(
+                        color:
+                          Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow:
+                        TextOverflow
+                          .ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment:
+                  CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Rs. ${_livePrice.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight:
+                        FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize:
+                      MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _liveChange >= 0
+                          ? Icons.arrow_upward
+                          : Icons
+                              .arrow_downward,
+                        size: 13,
+                        color:
                           _liveChange >= 0
-                            ? Icons
-                                .arrow_upward
-                            : Icons
-                                .arrow_downward,
-                          size: 12,
+                          ? AppTheme.green
+                          : AppTheme.red,
+                      ),
+                      Text(
+                        '${_liveChange >= 0 ? '+' : ''}${_liveChange.toStringAsFixed(2)} (${_liveChangePct.toStringAsFixed(2)}%)',
+                        style: TextStyle(
                           color:
                             _liveChange >= 0
                             ? AppTheme.green
                             : AppTheme.red,
+                          fontSize: 12,
+                          fontWeight:
+                            FontWeight.w600,
                         ),
-                        Text(
-                          '${_liveChange >= 0 ? '+' : ''}${_liveChange.toStringAsFixed(2)} (${_liveChangePct.toStringAsFixed(2)}%)',
-                          style: TextStyle(
-                            color:
-                              _liveChange >= 0
-                              ? AppTheme.green
-                              : AppTheme.red,
-                            fontSize: 12,
-                            fontWeight:
-                              FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+      // Interval selector
+      _buildIntervalSelector(),
+
+      // Chart
+      Expanded(
+        child: _isPriceLoading
+          ? const Center(
+              child:
+                CircularProgressIndicator())
+          : _closingPrices.length < 2
+            ? Center(
+                child: Column(
+                  mainAxisAlignment:
+                    MainAxisAlignment
+                      .center,
+                  children: [
+                    Icon(
+                      Icons
+                        .show_chart,
+                      size: 64,
+                      color:
+                        Colors.grey[400],
+                    ),
+                    const SizedBox(
+                      height: 12),
+                    Text(
+                      'Loading chart...',
+                      style: TextStyle(
+                        color:
+                          Colors.grey[600]),
+                    ),
+                    const SizedBox(
+                      height: 16),
+                    ElevatedButton(
+                      onPressed:
+                        _loadPriceHistory,
+                      child: const Text(
+                        'Reload Chart'),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: _isPriceLoading
-            ? const Center(
-                child: CircularProgressIndicator())
-            : _closingPrices.isEmpty
-              ? _buildNoData(
-                  'Price data unavailable')
-              : Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: _buildPriceChart(),
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildIntervalSelector() {
-    final intervals = [
-      ('1m', '1'), ('5m', '5'),
-      ('15m', '15'), ('1H', '60'),
-      ('1D', 'D'), ('1W', 'W'), ('1M', 'M'),
-    ];
-    return Container(
-      height: 36,
-      color:
-        Theme.of(context).cardTheme.color,
-      child: Row(
-        mainAxisAlignment:
-          MainAxisAlignment.spaceEvenly,
-        children: intervals.map((iv) {
-          final isSelected =
-            _selectedInterval == iv.$2;
-          return GestureDetector(
-            onTap: () {
-              setState(() =>
-                _selectedInterval = iv.$2);
-              _webController.loadHtmlString(
-                _buildChartHtml(iv.$2));
-            },
-            child: Container(
-              padding:
-                const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected
-                  ? AppTheme.primaryBlue
-                  : Colors.transparent,
-                borderRadius:
-                  BorderRadius.circular(6),
+              )
+            : Padding(
+                padding:
+                  const EdgeInsets
+                    .fromLTRB(
+                    8, 16, 16, 16),
+                child:
+                  _buildPriceChart(),
               ),
-              child: Text(
-                iv.$1,
-                style: TextStyle(
-                  color: isSelected
-                    ? Colors.white
-                    : Colors.grey[600],
-                  fontSize: 12,
-                  fontWeight: isSelected
-                    ? FontWeight.bold
-                    : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
       ),
-    );
-  }
+    ],
+  );
+}
+
+ Widget _buildIntervalSelector() {
+  return const SizedBox.shrink();
+}
 
   Widget _buildPriceChart() {
     if (_closingPrices.isEmpty) {

@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/metrics_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/main_screen.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/alert_service.dart';
 
 void main() async {

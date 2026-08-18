@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/google_auth_service.dart';
 import '../auth/login_screen.dart';
 import 'tradebook_screen.dart';
+import '../../services/alert_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -248,6 +249,28 @@ class SettingsScreen extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
           ),
+
+          const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await AlertService.showStockAlert(
+                  symbol: 'INFY',
+                  alertType: 'TARGET',
+                  triggerPrice: 1800.0,
+                  currentPrice: 1850.0,
+                );
+                ScaffoldMessenger.of(context)
+                  .showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Test notification sent')),
+                );
+              },
+              icon: const Icon(
+                Icons.notifications_outlined),
+              label: const Text(
+                'Test Notification'),
+            ),
 
           const SizedBox(height: 12),
 

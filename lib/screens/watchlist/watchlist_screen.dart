@@ -899,6 +899,7 @@ Builder(builder: (context) {
       final symbol =
         item['symbol']?.toString() ?? '';
       if (symbol.isEmpty) continue;
+
       final quote =
         await _api.getStockQuote(symbol);
       final price = double.tryParse(
@@ -907,27 +908,25 @@ Builder(builder: (context) {
       final changePct = double.tryParse(
         quote['changePercent']
           ?.toString() ?? '0') ?? 0;
+
       if (price > 0 && mounted) {
         setState(() {
           _livePrices[symbol] = price;
           _liveChangePct[symbol] = changePct;
         });
 
-        // Check watchlist target
-        final targetPrice = double.tryParse(
+        // Check watchlist target price
+        final target = double.tryParse(
           item['targetPrice']
             ?.toString() ?? '0') ?? 0;
-        if (targetPrice > 0 &&
-            price >= targetPrice) {
-          await AlertService.showAlert(
-            title:
-              '🎯 Target Hit — $symbol',
-            body:
-              '$symbol on your watchlist '
-              'has reached Rs. '
-              '${price.toStringAsFixed(2)}, '
-              'your target of Rs. '
-              '${targetPrice.toStringAsFixed(2)}',
+        if (target > 0 &&
+            price >= target) {
+          await AlertService
+            .showStockAlert(
+            symbol: symbol,
+            alertType: 'TARGET',
+            triggerPrice: target,
+            currentPrice: price,
           );
         }
       }
@@ -936,5 +935,4 @@ Builder(builder: (context) {
     }
   }
 }
-
 }
