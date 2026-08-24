@@ -54,10 +54,11 @@ class _PortfolioScreenState
   }
 
   Future<void> _loadHoldings() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  setState(() {
+    _isLoading = true;
+    _error = null;
+  });
+  _sentAlerts.clear(); // ADD THIS LINE
     try {
       final holdings = await _api.getHoldings();
       setState(() {
@@ -90,7 +91,11 @@ class _PortfolioScreenState
 
   Future<void> _loadLivePrices() async {
   for (var holding in _holdings) {
-    try {
+  print('Checking: '
+    '${holding['symbol']} | '
+    'SL: ${holding['stopLoss']} | '
+    'TP: ${holding['targetPrice']}');
+  try {
       final symbol =
         holding['symbol']
           ?.toString() ?? '';
@@ -106,46 +111,64 @@ class _PortfolioScreenState
           ?.toString() ?? '0') ?? 0;
 
       if (price > 0 && mounted) {
-        setState(() {
-          _livePrices[symbol] = price;
-          _liveChangePct[symbol] =
-            changePct;
-        });
+  setState(() {
+    _livePrices[symbol] = price;
+    _liveChangePct[symbol] = changePct;
+  });
 
-        // Check stop loss alert
-        final stopLoss = double.tryParse(
-          holding['stopLoss']
-            ?.toString() ?? '0') ?? 0;
-        final slKey = '$symbol\_SL';
-        if (stopLoss > 0 &&
-            price <= stopLoss &&
-            !_sentAlerts.contains(slKey)) {
-          _sentAlerts.add(slKey);
-          await AlertService.showStockAlert(
-            symbol: symbol,
-            alertType: 'STOPLOSS',
-            triggerPrice: stopLoss,
-            currentPrice: price,
-          );
-        }
+  // Parse target and stop loss
+  final targetRaw =
+    holding['targetPrice'];
+  final slRaw =
+    holding['stopLoss'];
 
-        // Check target price alert
-        final target = double.tryParse(
-          holding['targetPrice']
-            ?.toString() ?? '0') ?? 0;
-        final tpKey = '$symbol\_TP';
-        if (target > 0 &&
-            price >= target &&
-            !_sentAlerts.contains(tpKey)) {
-          _sentAlerts.add(tpKey);
-          await AlertService.showStockAlert(
-            symbol: symbol,
-            alertType: 'TARGET',
-            triggerPrice: target,
-            currentPrice: price,
-          );
-        }
-      }
+  final target = targetRaw != null
+    ? double.tryParse(
+        targetRaw.toString()) ?? 0
+    : 0.0;
+  final slPrice = slRaw != null
+    ? double.tryParse(
+        slRaw.toString()) ?? 0
+    : 0.0;
+
+  print('[$symbol] price=$price '
+    'target=$target sl=$slPrice '
+    'sent=$_sentAlerts');
+
+  // Target price hit
+  if (target > 0 &&
+      price >= target) {
+    final key = '${symbol}_TP';
+    if (!_sentAlerts.contains(key)) {
+      _sentAlerts.add(key);
+      print('Sending TARGET alert '
+        'for $symbol');
+      await AlertService.showStockAlert(
+        symbol: symbol,
+        alertType: 'TARGET',
+        triggerPrice: target,
+        currentPrice: price,
+      );
+    }
+  }
+
+  // Stop loss hit
+  if (slPrice > 0 &&
+      price <= slPrice) {
+    final key = '${symbol}_SL';
+    if (!_sentAlerts.contains(key)) {
+      _sentAlerts.add(key);
+      print('Sending SL alert '
+        'for $symbol');
+      await AlertService.showStockAlert(
+        symbol: symbol,
+        alertType: 'STOPLOSS',
+        triggerPrice: slPrice,
+        currentPrice: price,
+      );
+    }
+  }
+}
     } catch (e) {
       // silent fail
     }
@@ -1256,95 +1279,204 @@ if ((holding['stopLoss'] != null &&
 
   // ── Edit Sheet ────────────────────────────────
   void _showEditSheet(
-      BuildContext context,
-      Map<String, dynamic> holding) {
-    final priceCtrl = TextEditingController(
-      text: holding['buyPrice']
-        ?.toString() ?? '');
-    final qtyCtrl = TextEditingController(
-      text: holding['quantity']
-        ?.toString() ?? '');
+    BuildContext context,
+    Map<String, dynamic> holding) {
+  final priceCtrl = TextEditingController(
+    text: holding['buyPrice']
+      ?.toString() ?? '');
+  final qtyCtrl = TextEditingController(
+    text: holding['quantity']
+      ?.toString() ?? '');
+  final slCtrl = TextEditingController(
+    text: holding['stopLoss'] != null &&
+        holding['stopLoss'] != 0
+      ? holding['stopLoss'].toString()
+      : '');
+  final tpCtrl = TextEditingController(
+    text: holding['targetPrice'] != null &&
+        holding['targetPrice'] != 0
+      ? holding['targetPrice'].toString()
+      : '');
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(20)),
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(20)),
+    ),
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(
+        left: 20, right: 20, top: 20,
+        bottom: MediaQuery.of(ctx)
+          .viewInsets.bottom + 20,
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(ctx)
-            .viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Edit ${holding['symbol']}',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment:
+          CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Edit ${holding['symbol']}',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: priceCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Buy Price',
-                prefixText: 'Rs. ',
-              ),
-              keyboardType:
-                TextInputType.number,
+          ),
+          const SizedBox(height: 16),
+
+          // Buy Price
+          TextField(
+            controller: priceCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Buy Price',
+              prefixText: 'Rs. ',
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: qtyCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Quantity',
-              ),
-              keyboardType:
-                TextInputType.number,
+            keyboardType:
+              TextInputType.number,
+          ),
+          const SizedBox(height: 12),
+
+          // Quantity
+          TextField(
+            controller: qtyCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Quantity (shares)',
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  await _api.updateHolding(
-                    holding['id'],
-                    {
-                      'symbol':
-                        holding['symbol'],
-                      'companyName':
-                        holding['companyName'],
-                      'buyPrice': double.parse(
-                        priceCtrl.text),
-                      'quantity': double.parse(
-                        qtyCtrl.text),
-                      'exchange':
-                        holding['exchange'],
-                    },
-                  );
-                  if (!context.mounted) return;
-                  Navigator.pop(ctx);
-                  _loadHoldings();
-                } catch (e) {
-                  ScaffoldMessenger.of(context)
-                    .showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Failed to update')),
-                  );
+            keyboardType:
+              TextInputType.number,
+          ),
+          const SizedBox(height: 12),
+
+          // Stop Loss
+          TextField(
+            controller: slCtrl,
+            decoration: InputDecoration(
+              labelText:
+                'Stop Loss Price (optional)',
+              prefixText: 'Rs. ',
+              helperText:
+                'Alert when price falls '
+                'below this',
+              suffixIcon: slCtrl.text
+                  .isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.clear,
+                      size: 18),
+                    onPressed: () =>
+                      slCtrl.clear(),
+                  )
+                : null,
+            ),
+            keyboardType:
+              TextInputType.number,
+          ),
+          const SizedBox(height: 12),
+
+          // Target Price
+          TextField(
+            controller: tpCtrl,
+            decoration: InputDecoration(
+              labelText:
+                'Target Price (optional)',
+              prefixText: 'Rs. ',
+              helperText:
+                'Alert when price reaches '
+                'this',
+              suffixIcon: tpCtrl.text
+                  .isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.clear,
+                      size: 18),
+                    onPressed: () =>
+                      tpCtrl.clear(),
+                  )
+                : null,
+            ),
+            keyboardType:
+              TextInputType.number,
+          ),
+          const SizedBox(height: 20),
+
+          // Update button
+          ElevatedButton(
+            onPressed: () async {
+              if (priceCtrl.text.isEmpty ||
+                  qtyCtrl.text.isEmpty) {
+                return;
+              }
+              try {
+                final body = {
+                  'symbol':
+                    holding['symbol'],
+                  'companyName':
+                    holding['companyName'],
+                  'buyPrice': double.parse(
+                    priceCtrl.text),
+                  'quantity': double.parse(
+                    qtyCtrl.text),
+                  'exchange':
+                    holding['exchange']
+                    ?? 'NSE',
+                };
+
+                // Only include SL/TP
+                // if filled in
+                if (slCtrl.text
+                    .isNotEmpty) {
+                  body['stopLoss'] =
+                    double.parse(
+                      slCtrl.text);
                 }
-              },
-              child: const Text('Update'),
-            ),
-          ],
-        ),
+                if (tpCtrl.text
+                    .isNotEmpty) {
+                  body['targetPrice'] =
+                    double.parse(
+                      tpCtrl.text);
+                }
+
+                await _api.updateHolding(
+                  holding['id'], body);
+
+                if (!context.mounted)
+                  return;
+                Navigator.pop(ctx);
+                // Clear sent alerts so
+                // new SL/TP triggers
+                _sentAlerts.remove(
+                  '${holding['symbol']}_SL');
+                _sentAlerts.remove(
+                  '${holding['symbol']}_TP');
+                _loadHoldings();
+
+                ScaffoldMessenger.of(
+                  context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Updated successfully'),
+                    backgroundColor:
+                      Color(0xFF4CAF50),
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(
+                  context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Failed to update'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Update'),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ── Delete ────────────────────────────────────
   Future<void> _deleteHolding(int id) async {

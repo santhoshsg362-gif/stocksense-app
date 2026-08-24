@@ -253,19 +253,15 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: () async {
-                await AlertService.showStockAlert(
-                  symbol: 'INFY',
-                  alertType: 'TARGET',
-                  triggerPrice: 1800.0,
-                  currentPrice: 1850.0,
-                );
-                ScaffoldMessenger.of(context)
-                  .showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Test notification sent')),
-                );
-              },
+              await AlertService.showTest();
+              ScaffoldMessenger.of(context)
+                .showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Test notification sent — '
+                    'check your notification bar')),
+              );
+            },
               icon: const Icon(
                 Icons.notifications_outlined),
               label: const Text(

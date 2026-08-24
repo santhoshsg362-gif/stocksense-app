@@ -8,10 +8,12 @@ import 'screens/auth/login_screen.dart';
 import 'screens/home/main_screen.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/alert_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AlertService.init();
+  await AlertService.requestPermission();
   final metricsProvider = MetricsProvider();
   await metricsProvider.load();
 
