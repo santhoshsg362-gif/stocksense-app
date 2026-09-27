@@ -13,6 +13,10 @@ import 'package:permission_handler/permission_handler.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AlertService.init();
+  // Request notification permission
+  final status = await Permission
+    .notification.request();
+  print('Notification permission: $status');
   await AlertService.requestPermission();
   final metricsProvider = MetricsProvider();
   await metricsProvider.load();
